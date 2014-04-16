@@ -4,8 +4,7 @@
 Black Smurf Assembler
 *********************
 
-Version:  1.01  30-Jan-2013 for 6502 / 6510 CPU's
-Contact:  Black.Smurf@gmx.de
+Version:  1.2  16-Apr-2014 for 6502 / 6510 CPU's
 
 The assembler was developed and tested on an iMAC with OSX Mountain Lion.
 Using no specific options of the host system, it should run on any
@@ -19,13 +18,13 @@ Compiling
 =========
 If your compiler is named "gcc" for example, compile with:
 
-gcc -o bsa bsa.c
+gcc -o asm asm.c
 
 Running
 =======
 If you have a source code named "hello.asm", run the assembler with:
 
-bsa hello
+asm hello
 
 It will read "hello.asm" as input file and write the binary file
 "hello" and the listing with cross reference "hello.lst".
@@ -2290,14 +2289,14 @@ int main(int argc, char *argv[])
       }
       else
       {
-         printf("\nUsage: bsa [-d -D -x] <source> <bin> <list>\n");
+         printf("\nUsage: asm [-d -D -x] <source> <bin> <list>\n");
          exit(1);
       }
    }
    if (!Src[0])
    {
       printf("*** missing filename fpr assembler source file ***\n");
-      printf("\nUsage: bsa [-d -D -x] <source> [<bin> <list>]\n");
+      printf("\nUsage: asm [-d -D -x] <source> [<bin> <list>]\n");
       exit(1);
    }
 
@@ -2314,7 +2313,7 @@ int main(int argc, char *argv[])
 
    printf("\n");
    printf("*******************************************\n");
-   printf("* Black Smurf Assembler 1.1 * 16-Feb-2013 *\n");
+   printf("* Black Smurf Assembler 1.2 * 16-Apr-2014 *\n");
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
