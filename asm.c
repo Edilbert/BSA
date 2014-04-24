@@ -759,7 +759,7 @@ int MacroIndex(char *p)
 
 char *DefineLabel(char *p, int *val, int Locked)
 {
-   int i,j,l,v;
+   int j,l,v;
 
    if (Labels > MAXLAB -2)
    {
@@ -927,7 +927,7 @@ char *EvalSymValue(char *p, int *v)
 
 char *EvalSymBytes(char *p, int *v)
 {
-   int i,l;
+   int i;
    char Sym[ML];
 
    p = GetSymbol(p,Sym);
@@ -1319,7 +1319,7 @@ char *ParseStoreData(char *p)
 
 char *ParseBSSData(char *p)
 {
-   int i,m,v;
+   int m;
 
    p = EvalOperand(p,&m,0);
    if (m < 1 || m > 32767)
@@ -1853,7 +1853,7 @@ int ScanArguments(char *p, char *args, int ptr[])
 void RecordMacro(char *p)
 {
    char Macro[ML];
-   int i,j,k,l,v,al,an,bl;
+   int i,j,l,al,an,bl;
    int ap[10];
    char args[ML];
    char Buf[ML];
@@ -1985,7 +1985,7 @@ int ExpandMacro(char *m)
 
 void NextMacLine(char *w)
 {
-   int i,MacAlign;
+   int i;
    char *r;
 
    --LiNo; // Macro expansion should not increment line count
@@ -2113,7 +2113,7 @@ void Phase1(void)
 
 void Phase2(void)
 {
-    int l,lo,hi;
+    int l;
 
    Phase = 2;
    if (IfLevel)
