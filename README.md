@@ -1,6 +1,7 @@
-ASM
+BSA
 ===
 
-A 6502 cross-assembler for MAC OSX, Linux and Windows
+The Black Smurf Assembler for the 6502 CPU
 
-asm.c  : source code for the assembler
+A cross-assembler for hosts running MAC OSX, Linux or Windows
+
