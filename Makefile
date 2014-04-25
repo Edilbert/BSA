@@ -2,7 +2,7 @@
 # If you're looking for a cross compiler for Windows designed to
 # run on any Unix sytem (Linux, Mac OS X, *BSD...): http://mxe.cc
 
-PRGNAME=asm
+PRGNAME=bsa
 INSTALLPATH=/usr/local/bin
 
 
