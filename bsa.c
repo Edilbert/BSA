@@ -1845,6 +1845,7 @@ int ScanArguments(char *p, char *args, int ptr[])
          printf("Syntax error in macro definition '%c'\n",*p);
          exit(1);
       }
+      ++p; // skip comma
    }
    return n;
 }
@@ -1874,6 +1875,18 @@ void RecordMacro(char *p)
    if (*p == '(') 
    {
       an = ScanArguments(p+1,args,ap);
+      if (df)
+      {
+         fprintf(df,"RecordMacro: %s(",Macro);
+         for (i=0 ; i < an ; ++i)
+         {
+            at = args + ap[i];
+            al = strlen(at);
+            fprintf(df,"%s[%d]",at,al);
+            if (i < an-1) fprintf(df,",");
+         }
+         fprintf(df,")\n");
+      }
       j = MacroIndex(Macro);
       if (j < 0)
       {
