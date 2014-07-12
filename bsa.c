@@ -1396,6 +1396,17 @@ char *ParseByteData(char *p)
          ++p; // Skip quote
          if (*p == '^') ByteBuffer[l-1] |= 0x80; // Set bit 7 of last char
       }
+      if (*p == '@') // CBM Screen code
+      {
+         ++p;
+         while (*p != '@' && l < sizeof(ByteBuffer)-1)
+         {
+                    if (*p >= 'a' && *p <= 'z') ByteBuffer[l++] = *p++ - 0x60;
+               else if (*p >= 'A' && *p <= 'Z') ByteBuffer[l++] = *p++ + 0x20;
+               else ByteBuffer[l++] = *p++;
+         }
+         ++p; // Skip ampersand
+      }
       else if (isdigit(*p))
       {
          p = EvalDecValue(p,&v);
