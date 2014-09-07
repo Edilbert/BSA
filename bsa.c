@@ -1338,6 +1338,33 @@ char *ParseBSSData(char *p)
 }
 
 
+char *ParseBitData(char *p)
+{
+   int i,v;
+
+   v = 0;
+   for (i=0 ; i < 8 ; ++i)
+   {
+      v <<= 1;
+      p = SkipSpace(p+1);
+      if (*p == '*') v |= 1;
+      else if (*p != '.') 
+      {
+         printf("\n*** Error line %d: ",LiNo);
+         printf("use only '*' for 1 and '.' for 0 in BITS statement\n");
+         exit(1);
+      }
+   }
+   if (Phase == 2)
+   {
+      fprintf(lf,"%5d %4.4x ",LiNo,pc);
+      ROM[pc++] = v;
+      fprintf(lf,"%2.2x       ",v);
+      fprintf(lf,"%s\n",Line);
+   }
+   return p;
+}
+
 char *ParseByteData(char *p)
 {
    int i,j,l,v;
@@ -1475,6 +1502,10 @@ char *IsData(char *p)
    else if (!strncasecmp(p,"BYTE",4))
    {
       p = ParseByteData(p+4);
+   }
+   else if (!strncasecmp(p,"BITS",4))
+   {
+      p = ParseBitData(p+4);
    }
    else if (!strncasecmp(p,"QUAD",4))
    {
