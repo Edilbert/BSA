@@ -4,7 +4,7 @@
 Black Smurf Assembler
 *********************
 
-Version:  1.2  16-Apr-2014 for 6502 / 6510 CPU's
+Version:  1.3  20-Dec-2014 for 6502 / 6510 CPU's
 
 The assembler was developed and tested on an iMAC with OSX Mountain Lion.
 Using no specific options of the host system, it should run on any
@@ -53,7 +53,7 @@ Examples of pseudo opcodes (directives):
 .QUAD 100000                   stores a 32 bit integer in CBM format
 .REAL 3.1415926                stores a 40 bit real in CBM format
 .FILL  N ($EA)                 fill memory with N bytes containing $EA
-.FILL  $A000 - * (0)           fill memory from pc(*) upto $9FFF  
+.FILL  $A000 - * (0)           fill memory from pc(*) upto $9FFF
 TXTTAB .BSS 2                  define TXTTAB and increase address pointer by 2
   & = $033A                    set BSS address pointer
 
@@ -170,7 +170,7 @@ Abso,Absx,Absy, // 3 byte absolute modes
 Indi,Indx,Indy  //   indirect modes
 };
 
-struct s6502
+struct cpu_struct
 {
    int  cpu;     // 0 = 6502, 1 = 65c02
    int  len;
@@ -181,7 +181,7 @@ struct s6502
    char fmt[8];
 };
 
-struct s6502 set[256] = 
+struct cpu_struct set[256] = 
 {
    {0, 1, Impl, "BRK" , "" , ""   , ""       },   // 00
    {0, 2, Indx, "ORA" , "(", ",X)", "(%s,X)" },   // 01
@@ -456,9 +456,98 @@ struct s6502 set[256] =
    {1, 3, Zpag, "BBS7", "" , ""   , "%s"     }    // ff
 };
 
+
+char *Z80_Mne[] =
+{
+   "LD"  ,      // Load Group
+
+   "PUSH",      // Stack Group
+   "POP" ,
+
+   "EX"  ,      // Exchange, Block & Search Group
+   "LDI" ,
+   "LDIR",
+   "LDD" ,
+   "LDDR",
+   "CPI" ,
+   "CPIR",
+   "CPD" ,
+   "CPDR",
+
+   "ADD" ,      // Arithmetic and Logic Group
+   "ADC" ,
+   "SUB" ,
+   "SBC" ,
+   "AND" ,
+   "OR"  ,
+   "XOR" ,
+   "CP"  ,
+   "INC" ,
+   "DEC" ,
+
+   "DAA" ,      // General Purpose
+   "CPL" ,
+   "NEG" ,
+   "CCF" ,
+   "SCF" ,
+   "NOP" ,
+   "HALT",
+   "DI"  ,
+   "EI"  ,
+   "IM"  ,
+
+   "RLCA",      // Rotate and Shift Group
+   "RLA" ,
+   "RRCA",
+   "RRA" ,
+   "RLC" ,
+   "RL"  ,
+   "RRC" ,
+   "RR"  ,
+   "SLA" ,
+   "SLL" ,
+   "SRA" ,
+   "SRL" ,
+   "RLD" ,
+   "RRD" ,
+
+   "BIT" ,      // Bit Group
+   "SET" ,
+   "RES" ,
+
+   "JP"  ,      // Jump Group
+   "JR"  ,
+   "DJNZ",
+
+   "CALL",      // Call & Return Group
+   "RET" ,
+   "RETI",
+   "RETN",
+   "RST" ,
+
+   "IN"  ,      // Input & Output
+   "INI" ,
+   "INIR",
+   "IND" ,
+   "INDR",
+   "OUT" ,
+   "OUTI",
+   "OTIR",
+   "OUTD",
+   "OTDR"
+};
+
+#define MNES (sizeof(Z80_Mne) / sizeof(char *))
+
 #define UNDEF 0xffff0000
 
-int CPU_Type = 0;  // 1: 65c02
+#define CPU_6502   0
+#define CPU_65c02  1
+#define CPU_65816  2
+#define CPU_Z80    3
+
+int CPU_Type = CPU_6502;
+
 int SkipHex = 0;   // Switch on with -x
 int Debug = 0;     // Switch on with -D 
 int LiNo  = 0;
@@ -613,7 +702,7 @@ void ErrorLine(char *p)
 }
 
 
-int IsInstruction(char *p)
+int Is6502Instruction(char *p)
 {
    int i;
 
@@ -628,7 +717,7 @@ int IsInstruction(char *p)
          {
             ErrorLine(p);
             printf("Found 65c02 instruction in 6502 mode\n");
-            printf("Include:  CPU = 65c02 to enable 65c02 mode\n");
+            printf("Set: CPU = 65c02 to enable 65c02 mode\n");
             exit(1);
          }
          return i; // Is instruction!
@@ -649,6 +738,28 @@ int IsInstruction(char *p)
    return -1; // No mnemonic
 }
 
+int IsZ80Instruction(char *p)
+{
+   int i,l;
+
+   for (i=0 ; i < MNES ; ++i)
+   {
+      l = strlen(Z80_Mne[i]);
+      if (!strncasecmp(p,Z80_Mne[i],l) && !isym(p[l])) return i;
+   }
+   return -1; // No mnemonic
+}
+
+int IsInstruction(char *p)
+{
+   switch (CPU_Type)
+   {
+      case CPU_6502:
+      case CPU_65c02: return Is6502Instruction(p);
+      case CPU_Z80:   return IsZ80Instruction(p);
+   }
+   return -1;
+}
 
 char *NeedChar(char *p, char c)
 {
@@ -2089,15 +2200,22 @@ void ParseLine(char *cp)
    }
    if (*cp == 0 || *cp == ';')  // Empty or comment only
    {
-      if (Phase == 2) fprintf(lf,"%5d               %s\n",LiNo,Line);
+      if (Phase == 2)
+      {
+          if (*cp == ';') fprintf(lf,"%5d               %s\n",LiNo,Line);
+          else            fprintf(lf,"%5d\n",LiNo);
+      }
       return;
    }
    if (isalpha(*cp))            // Macro, Label or mnemonic
    {
       if (!strncasecmp(cp,"CPU",3))
       {
-         CPU_Type = 0; // Default: 6502
-         if (Strcasestr(cp+3,"65c02")) CPU_Type = 1;
+         CPU_Type = CPU_6502;  // default
+              if (Strcasestr(cp+3,"65c02")) CPU_Type = CPU_65c02;
+         else if (Strcasestr(cp+3,"65816")) CPU_Type = CPU_65816;
+         else if (Strcasestr(cp+3,"z80"  )) CPU_Type = CPU_Z80;
+
          if (Phase == 2)
          {
             fprintf(lf,"%5d               %s\n",LiNo,Line);
@@ -2222,7 +2340,8 @@ void ListSymbols(int n, int lb, int ub)
          else if (l == Indx) A = 'x';
          else if (l == Indy) A = 'y';
          else  A = ' ';
-         fprintf(lf,"%c",A);
+         if ((A != ' ' || (j % 5) != 4) && j != lab[i].NumRef)
+            fprintf(lf,"%c",A);
       }
       fprintf(lf,"\n");
    }
@@ -2368,7 +2487,7 @@ int main(int argc, char *argv[])
 
    printf("\n");
    printf("*******************************************\n");
-   printf("* Black Smurf Assembler 1.2 * 16-Apr-2014 *\n");
+   printf("* Black Smurf Assembler 1.4 * 20-Dec-2014 *\n");
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
