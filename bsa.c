@@ -4,7 +4,7 @@
 Black Smurf Assembler
 *********************
 
-Version:  1.3  20-Dec-2014 for 6502 / 6510 CPU's
+Version:  1.3  23-Dec-2014 for 6502 / 6510 CPU's
 
 The assembler was developed and tested on an iMAC with OSX Mountain Lion.
 Using no specific options of the host system, it should run on any
@@ -1333,7 +1333,7 @@ char *ParseFillData(char *p)
    int i,m,v;
 
    p = EvalOperand(p,&m,0);
-   if (m < 1 || m > 32767)
+   if (m < 0 || m > 32767)
    {
       printf("\n*** Error line %d: ",LiNo);
       printf("Illegal FILL multiplier %d\n",m);
@@ -1351,7 +1351,9 @@ char *ParseFillData(char *p)
    if (Phase == 2)
    {
       for (i=0 ; i < m ; ++i) ROM[pc+i] = v;
-      fprintf(lf,"%5d %4.4x %2.2x ", LiNo,pc,v);
+      fprintf(lf,"%5d %4.4x ", LiNo,pc);
+      if (m > 0) fprintf(lf,"%2.2x ",v);
+      else       fprintf(lf,"   ");
       if (m > 1) fprintf(lf,"%2.2x ",v);
       else       fprintf(lf,"   ");
       if (m > 2) fprintf(lf,"%2.2x ",v);
