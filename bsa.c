@@ -1401,7 +1401,7 @@ char *IncludeFile(char *p)
    IncludeStack[++IncludeLevel] = sf;
    if (Phase == 2)
    {
-      fprintf(lf,"%5d %4.4x        ", LiNo,pc);
+      fprintf(lf,"%5d %4.4x          ", LiNo,pc);
       fprintf(lf,"%s\n",Line);
    }
    return p;
@@ -2314,6 +2314,11 @@ void Phase1Listing(void)
 
 int CloseInclude(void)
 {
+   ++LiNo;
+   if (Phase == 2)
+   {
+      fprintf(lf,"%5d                         closed INCLUDE file\n",LiNo);
+   }
    fclose(sf);
    sf = IncludeStack[--IncludeLevel];
    fgets(Line,sizeof(Line),sf);
