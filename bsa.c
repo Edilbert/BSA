@@ -4,7 +4,7 @@
 Black Smurf Assembler
 *********************
 
-Version:  1.3  23-Dec-2014 for 6502 / 6510 CPU's
+Version:  1.4  23-Dec-2014 for 6502 / 6510 CPU's
 
 The assembler was developed and tested on an iMAC with OSX Mountain Lion.
 Using no specific options of the host system, it should run on any
@@ -54,6 +54,7 @@ Examples of pseudo opcodes (directives):
 .REAL 3.1415926                stores a 40 bit real in CBM format
 .FILL  N ($EA)                 fill memory with N bytes containing $EA
 .FILL  $A000 - * (0)           fill memory from pc(*) upto $9FFF
+.INCLUDE "filename"            includes specified file
 TXTTAB .BSS 2                  define TXTTAB and increase address pointer by 2
   & = $033A                    set BSS address pointer
 
@@ -602,6 +603,10 @@ FILE *sf;
 FILE *lf;
 FILE *df;
 
+FILE *IncludeStack[100];
+
+int IncludeLevel;
+
 #define ML 256
 
 int ArgPtr[10];
@@ -734,7 +739,7 @@ int Is6502Instruction(char *p)
       if (!strncasecmp(p,set[i].mne,4) && set[i].cpu <= CPU_Type)
          return i; // Is instruction!
    }
-   
+
    return -1; // No mnemonic
 }
 
@@ -773,7 +778,7 @@ char *EvalAddress(char *p, int *a)
    if (*p == '$')
    {
       sscanf(++p,"%x",a);
-      while (isxdigit(*p)) ++p; 
+      while (isxdigit(*p)) ++p;
       p = SkipSpace(p);
    }
    if (*a < 0 || *a > 0xffff)
@@ -882,7 +887,7 @@ char *DefineLabel(char *p, int *val, int Locked)
    p = GetSymbol(p,Label);
    l = strlen(Label);
    p = SkipSpace(p);
-   if (*p == '=') 
+   if (*p == '=')
    {
       j = LabelIndex(Label);
       if (j < 0)
@@ -1365,6 +1370,43 @@ char *ParseFillData(char *p)
 }
 
 
+char *IncludeFile(char *p)
+{
+   char FileName[256];
+   char *fp;
+   p = NeedChar(p,'"');
+   if (!p)
+   {
+      printf("\n*** Error line %d: ",LiNo);
+      printf("Missing quoted filename after .INCLUDE\n");
+      exit(1);
+   }
+   fp = FileName;
+   ++p;
+   while (*p != 0 && *p != '"') *fp++ = *p++;
+   *fp = 0;
+   // printf("fopen %s\n",FileName);
+   if (IncludeLevel >= 99)
+   {
+      printf("\n*** Error line %d: ",LiNo);
+      printf("Too many includes nested ( >= 99)\n");
+      exit(1);
+   }
+   sf = fopen(FileName,"r");
+   if (!sf)
+   {
+      printf("Could not open include file <%s>\n",FileName);
+      exit(1);
+   }
+   IncludeStack[++IncludeLevel] = sf;
+   if (Phase == 2)
+   {
+      fprintf(lf,"%5d %4.4x        ", LiNo,pc);
+      fprintf(lf,"%s\n",Line);
+   }
+   return p;
+}
+
 char *ParseStoreData(char *p)
 {
    int Start,Length,i;
@@ -1648,6 +1690,10 @@ char *IsData(char *p)
    {
       p = ParseStoreData(p+5);
    }
+   else if (!strncasecmp(p,"INCLUDE",7))
+   {
+      p = IncludeFile(p+7);
+   }
    else
    {
       printf("\n*** Error line %d: ",LiNo);
@@ -1658,7 +1704,7 @@ char *IsData(char *p)
    return p;
 }
 
- 
+
 char * SplitOperand(char *p)
 {
    int l,lpar,rpar;
@@ -2266,13 +2312,22 @@ void Phase1Listing(void)
 }
 
 
+int CloseInclude(void)
+{
+   fclose(sf);
+   sf = IncludeStack[--IncludeLevel];
+   fgets(Line,sizeof(Line),sf);
+   return feof(sf);
+}
+
 void Phase1(void)
 {
-    int l;
+    int l,Eof;
 
    Phase = 1;
    fgets(Line,sizeof(Line),sf);
-   while (!feof(sf))
+   Eof = feof(sf);
+   while (!Eof || IncludeLevel > 0)
    {
       ++LiNo;
       l = strlen(Line);
@@ -2282,13 +2337,16 @@ void Phase1(void)
       if (df) Phase1Listing();
       if (InsideMacro) NextMacLine(Line);
       else fgets(Line,sizeof(Line),sf);
+      Eof = feof(sf);
+      if (Eof && IncludeLevel > 0) Eof = CloseInclude();
+      if (df) fprintf(df,"Phase 1:[%s] EOF=%d\n",Line,Eof);
    }
 }
 
 
 void Phase2(void)
 {
-    int l;
+    int l,Eof;
 
    Phase = 2;
    if (IfLevel)
@@ -2303,7 +2361,8 @@ void Phase2(void)
    rewind(sf);
    LiNo = 0;
    fgets(Line,sizeof(Line),sf);
-   while (!feof(sf))
+   Eof = feof(sf);
+   while (!Eof || IncludeLevel > 0)
    {
       ++LiNo;
       l = strlen(Line);
@@ -2312,6 +2371,10 @@ void Phase2(void)
       ParseLine(Line);
       if (InsideMacro) NextMacLine(Line);
       else fgets(Line,sizeof(Line),sf);
+      Eof = feof(sf);
+      if (Eof && IncludeLevel > 0) Eof = CloseInclude();
+      if (df) fprintf(df,"Phase 2:[%s] EOF=%d\n",Line,Eof);
+      if (Eof && IncludeLevel > 0) Eof = CloseInclude();
       if (GenEnd < pc) GenEnd = pc; // Remember highest assenble address
       if (ErrNum >= ERRMAX)
       {
@@ -2489,7 +2552,7 @@ int main(int argc, char *argv[])
 
    printf("\n");
    printf("*******************************************\n");
-   printf("* Black Smurf Assembler 1.4 * 20-Dec-2014 *\n");
+   printf("* Black Smurf Assembler 1.4 * 23-Dec-2014 *\n");
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
@@ -2501,6 +2564,7 @@ int main(int argc, char *argv[])
       printf("Could not open <%s>\n",Src);
       exit(1);
    }
+   IncludeStack[0] = sf;
    lf = fopen(Lst,"w");  // Listing
    if (Debug) df = fopen("Debug.lst","w");
 
