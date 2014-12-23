@@ -678,7 +678,7 @@ char *NextSymbol(char *p, char *s)
    p = GetSymbol(p,s);
    return p;
 }
-   
+
 
 char *SkipHexCode(char *p)
 {
@@ -686,7 +686,7 @@ char *SkipHexCode(char *p)
 
    l = strlen(p);
    if (l > 20 && isdigit(p[4]) && isspace(p[5]) &&
-       isxdigit(p[6]) && isxdigit(p[7]) && 
+       isxdigit(p[6]) && isxdigit(p[7]) &&
        isxdigit(p[8]) && isxdigit(p[9]) &&
        p[0] != ';')
    {
@@ -885,6 +885,7 @@ char *DefineLabel(char *p, int *val, int Locked)
       exit(1);
    }
    p = GetSymbol(p,Label);
+   if (*p == ':') ++p; // Ignore colon after label
    l = strlen(Label);
    p = SkipSpace(p);
    if (*p == '=')
