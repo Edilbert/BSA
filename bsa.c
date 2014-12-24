@@ -551,7 +551,8 @@ int CPU_Type = CPU_6502;
 
 int SkipHex = 0;   // Switch on with -x
 int Debug = 0;     // Switch on with -D 
-int LiNo  = 0;
+int LiNo  = 0;     // Line number of current file
+int TotalLiNo  = 0;// Total line number
 int ERRMAX = 10;   // Stop assemby after ERRMAX errors
 int ErrNum;
 int LoadAddress = UNDEF;
@@ -575,8 +576,8 @@ int SkipLine[10];
 
 // Filenames
 
-char Src[256];
-char Lst[256];
+char *Src;
+char  Lst[256];
 
 int GenStart = 0x10000 ; // Lowest assemble address
 int GenEnd   =       0 ; //Highest assemble address
@@ -603,7 +604,12 @@ FILE *sf;
 FILE *lf;
 FILE *df;
 
-FILE *IncludeStack[100];
+struct IncludeStackStruct
+{
+   FILE *fp;
+   int   LiNo;
+   char *Src;
+} IncludeStack[100];
 
 int IncludeLevel;
 
@@ -707,6 +713,12 @@ void ErrorLine(char *p)
 }
 
 
+void ErrorMsg(void) {
+   printf("\n*** Error in file %s line %d:\n",
+         IncludeStack[IncludeLevel].Src,LiNo);
+}
+
+
 int Is6502Instruction(char *p)
 {
    int i;
@@ -783,7 +795,7 @@ char *EvalAddress(char *p, int *a)
    }
    if (*a < 0 || *a > 0xffff)
    {
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("Address %x out of range\n",*a);
    }
    return p;
@@ -799,7 +811,7 @@ char *SetPC(char *p)
       if (!p)
       {
          ++ErrNum;
-         printf("\n*** Error line %d: ",LiNo);
+         ErrorMsg();
          printf("Missing '=' in set pc * instruction\n");
          exit(1);
       }
@@ -821,7 +833,7 @@ char *SetBSS(char *p)
    if (!p)
    {
       ++ErrNum;
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("Missing '=' in set BSS & instruction\n");
       exit(1);
    }
@@ -880,7 +892,7 @@ char *DefineLabel(char *p, int *val, int Locked)
    if (Labels > MAXLAB -2)
    {
       ++ErrNum;
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("Too many labels (> %d)\n",MAXLAB);
       exit(1);
    }
@@ -908,7 +920,7 @@ char *DefineLabel(char *p, int *val, int Locked)
       else if (lab[j].Address != v && !lab[j].Locked)
       {
          ++ErrNum;
-         printf("\n*** Error line %d:\n",LiNo);
+         ErrorMsg();
          ErrorLine(p);
          printf("*Multiple assignments for label [%s]\n",Label);
          printf("1st. value = $%4.4x   2nd. value = $%4.4x\n",lab[j].Address,v);
@@ -937,7 +949,7 @@ char *DefineLabel(char *p, int *val, int Locked)
       else if (lab[j].Address != bss)
       {
          ++ErrNum;
-         printf("\n*** Error line %d:\n",LiNo);
+         ErrorMsg();
          ErrorLine(p);
          printf("Multiple assignments for label [%s]\n",Label);
          printf("1st. value = $%4.4x   2nd. value = $%4.4x\n",lab[j].Address,bss);
@@ -965,13 +977,13 @@ char *DefineLabel(char *p, int *val, int Locked)
          ++ErrNum;
          if (Phase == 1)
          {
-            printf("\n*** Error line %d: ",LiNo);
+            ErrorMsg();
             printf("Multiple label definition [%s]",Label);
             printf(" value 1: %4.4x   value 2: %4.4x\n",lab[j].Address,pc);
          }
          else
          {
-            printf("\n*** Error line %d: ",LiNo);
+            ErrorMsg();
             printf("Phase error label [%s]",Label);
             printf(" phase 1: %4.4x   phase 2: %4.4x\n",lab[j].Address,pc);
          }
@@ -992,7 +1004,7 @@ void AddLabel(char *p)
    if (Labels > MAXLAB -2)
    {
       ++ErrNum;
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("Too many labels (> %d)\n",MAXLAB);
       exit(1);
    }
@@ -1159,7 +1171,7 @@ char *EvalCharValue(char *p, int *v)
    if (*p != '\'')
    {
       ++ErrNum;
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("Missing ' delimiter after character operand\n");
       exit(1);
    }
@@ -1238,7 +1250,7 @@ char *EvalOperand(char *p, int *v, int prio)
       if (df) fprintf(df,"] exit\n");
       if (!p)
       {
-         printf("\n*** Error line %d:\n",LiNo);
+         ErrorMsg();
          ErrorLine(p);
          printf("Missing right bracket ]\n");
          exit(1);
@@ -1269,7 +1281,7 @@ char *EvalOperand(char *p, int *v, int prio)
    else if (isym(*p))    p = EvalSymValue(p,v);
    else
    {
-      printf("\n*** Error line %d:\n",LiNo);
+      ErrorMsg();
       ErrorLine(p);
       printf("Illegal operand\n");
       exit(1);
@@ -1341,14 +1353,14 @@ char *ParseFillData(char *p)
    p = EvalOperand(p,&m,0);
    if (m < 0 || m > 32767)
    {
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("Illegal FILL multiplier %d\n",m);
       exit(1);
    }
    p = NeedChar(p,'(');
    if (!p)
    {
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("Missing '(' before FILL value\n");
       exit(1);
    }
@@ -1378,7 +1390,7 @@ char *IncludeFile(char *p)
    p = NeedChar(p,'"');
    if (!p)
    {
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("Missing quoted filename after .INCLUDE\n");
       exit(1);
    }
@@ -1389,7 +1401,7 @@ char *IncludeFile(char *p)
    // printf("fopen %s\n",FileName);
    if (IncludeLevel >= 99)
    {
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("Too many includes nested ( >= 99)\n");
       exit(1);
    }
@@ -1399,12 +1411,16 @@ char *IncludeFile(char *p)
       printf("Could not open include file <%s>\n",FileName);
       exit(1);
    }
-   IncludeStack[++IncludeLevel] = sf;
+   IncludeStack[IncludeLevel].LiNo = LiNo;
+   IncludeStack[++IncludeLevel].fp = sf;
+   IncludeStack[IncludeLevel].Src = malloc(strlen(FileName + 1));
+   strcpy(IncludeStack[IncludeLevel].Src, FileName);
    if (Phase == 2)
    {
       fprintf(lf,"%5d %4.4x          ", LiNo,pc);
       fprintf(lf,"%s\n",Line);
    }
+   LiNo = 0;
    return p;
 }
 
@@ -1417,35 +1433,35 @@ char *ParseStoreData(char *p)
    p = EvalOperand(p,&Start,0);
    if (Start < 0 || Start > 0xffff)
    {
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("Illegal start address for STORE %d\n",Start);
       exit(1);
    }
    p = NeedChar(p,',');
    if (!p)
    {
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("Missing ',' after start address\n");
       exit(1);
    }
    p = EvalOperand(p+1,&Length,0);
    if (Length < 0 || Length > 0x10000)
    {
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("Illegal length for STORE %d\n",Start);
       exit(1);
    }
    p = NeedChar(p,',');
    if (!p)
    {
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("Missing ',' after length\n");
       exit(1);
    }
    p = NeedChar(p+1,'"');
    if (!p)
    {
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("Missing quote for filename\n");
       exit(1);
    }
@@ -1460,7 +1476,7 @@ char *ParseStoreData(char *p)
    if (StoreCount < SFMAX) ++StoreCount;
    else
    {
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("number of storage files exceeds %d\n",SFMAX);
       exit(1);
    }
@@ -1480,7 +1496,7 @@ char *ParseBSSData(char *p)
    p = EvalOperand(p,&m,0);
    if (m < 1 || m > 32767)
    {
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("Illegal BSS size %d\n",m);
       exit(1);
    }
@@ -1506,7 +1522,7 @@ char *ParseBitData(char *p)
       if (*p == '*') v |= 1;
       else if (*p != '.') 
       {
-         printf("\n*** Error line %d: ",LiNo);
+         ErrorMsg();
          printf("use only '*' for 1 and '.' for 0 in BITS statement\n");
          exit(1);
       }
@@ -1623,7 +1639,7 @@ char *ParseByteData(char *p)
    }
    if (l < 1)
    {
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("Missing byte data\n");
       ErrorLine(p);
       exit(1);
@@ -1697,7 +1713,7 @@ char *IsData(char *p)
    }
    else
    {
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("Unknown pseudo op\n");
       ErrorLine(p);
       exit(1);
@@ -1795,7 +1811,7 @@ char * SplitOperand(char *p)
    }
    if (lpar != rpar)
    {
-      printf("\n*** Error line %d:\n",LiNo);
+      ErrorMsg();
       ErrorLine(p);
       printf("Address mode syntax error\n");
       exit(1);
@@ -1821,7 +1837,7 @@ void AdjustOpcode(char *p)
          return;
       }
    }
-   printf("\n*** Error line %d: ",LiNo);
+   ErrorMsg();
    printf("Illegal address mode %d for %s\n",am,set[oc].mne);
    ErrorLine(p);
    exit(1);
@@ -1848,7 +1864,7 @@ int CheckCondition(char *p)
       if (IfLevel > 9)
       {
          ++ErrNum;
-         printf("\n*** Error line %d: ",LiNo);
+         ErrorMsg();
          printf("Too many IF's nested\n");
          exit(1);
       }
@@ -1879,7 +1895,7 @@ int CheckCondition(char *p)
       if (IfLevel < 0)
       {
          ++ErrNum;
-         printf("\n*** Error line %d: ",LiNo);
+         ErrorMsg();
          printf("endif without if\n");
          exit(1);
       }
@@ -1904,7 +1920,7 @@ char *GenerateCode(char *p)
       il = 1;
       if (OperandExists(p))
       {
-         printf("\n*** Error line %d:\n",LiNo);
+         ErrorMsg();
          ErrorLine(p);
          printf("Implied address mode must not have operands\n");
          exit(1);
@@ -1926,7 +1942,7 @@ char *GenerateCode(char *p)
          }
          else if (Phase == 2)
          {
-            printf("\n*** Error line %d:\n",LiNo);
+            ErrorMsg();
             ErrorLine(p);
             printf("Immediate value out of range (%d)\n",v);
             exit(1);
@@ -1939,14 +1955,14 @@ char *GenerateCode(char *p)
          if (v != UNDEF) v  -= (pc + 2);
          if (Phase == 2 && v == UNDEF)
          {
-            printf("\n*** Error line %d:\n",LiNo);
+            ErrorMsg();
             ErrorLine(p);
             printf("Branch to undefined label\n");
             exit(1);
          }
          if (Phase == 2 && (v < -128 || v > 127))
          {
-            printf("\n*** Error line %d:\n",LiNo);
+            ErrorMsg();
             ErrorLine(p);
             printf("Branch too long (%d)\n",v);
             exit(1);
@@ -1960,14 +1976,14 @@ char *GenerateCode(char *p)
    }  
    else if (am != Impl && am != Accu)
    {
-      printf("\n*** Error line %d:\n",LiNo);
+      ErrorMsg();
       ErrorLine(p);
       printf("Operand missing\n");
       exit(1);
    }
    if (*o && *o != ';') 
    {
-      printf("\n*** Error line %d:\n",LiNo);
+      ErrorMsg();
       ErrorLine(p);
       printf("Operand syntax error\n");
       printf("<%s>\n",o);
@@ -1978,7 +1994,7 @@ char *GenerateCode(char *p)
    {
       if (v == UNDEF)
       {
-         printf("\n*** Error line %d:\n",LiNo);
+         ErrorMsg();
          ErrorLine(p);
          printf("Use of an undefined label\n");
          exit(1);
@@ -2001,7 +2017,7 @@ char *GenerateCode(char *p)
    if (il < 1 || il > 3)
    {
       ++ErrNum;
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("Wrong instruction length = %d\n",il);
       il = 1;
    }
@@ -2010,7 +2026,7 @@ char *GenerateCode(char *p)
       if (Phase > 1)
       {
          ++ErrNum;
-         printf("\n*** Error line %d: ",LiNo);
+         ErrorMsg();
          printf("Program counter exceeds 64 KB\n");
       }
    }
@@ -2043,7 +2059,7 @@ int ScanArguments(char *p, char *args, int ptr[])
       if (*p != ',')
       {
          ++ErrNum;
-         printf("\n*** Error line %d: ",LiNo);
+         ErrorMsg();
          printf("Syntax error in macro definition '%c'\n",*p);
          exit(1);
       }
@@ -2066,7 +2082,7 @@ void RecordMacro(char *p)
    if (Macros > MAXMAC -2)
    {
       ++ErrNum;
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("Too many macros (> %d)\n",MAXMAC);
       exit(1);
    }
@@ -2153,7 +2169,7 @@ void RecordMacro(char *p)
       else if (Phase == 1)
       {
          ++ErrNum;
-         printf("\n*** Error line %d: ",LiNo);
+         ErrorMsg();
          printf("Duplicate macel [%s]\n",Macro);
          exit(1);
       }
@@ -2180,7 +2196,7 @@ int ExpandMacro(char *m)
    if (an != Mac[j].Narg)
    {
       ++ErrNum;
-      printf("\n*** Error line %d: ",LiNo);
+      ErrorMsg();
       printf("Wrong # of arguments in [%s] called (%d) defined (%d)\n",
             Macro,an,Mac[j].Narg);
       exit(1);
@@ -2315,13 +2331,15 @@ void Phase1Listing(void)
 
 int CloseInclude(void)
 {
-   ++LiNo;
    if (Phase == 2)
    {
-      fprintf(lf,"%5d                         closed INCLUDE file\n",LiNo);
+      fprintf(lf,"%5d ;                       closed INCLUDE file %s\n",
+            LiNo, IncludeStack[IncludeLevel].Src);
    }
    fclose(sf);
-   sf = IncludeStack[--IncludeLevel];
+   free(IncludeStack[IncludeLevel].Src);
+   sf = IncludeStack[--IncludeLevel].fp;
+   LiNo = IncludeStack[IncludeLevel].LiNo;
    fgets(Line,sizeof(Line),sf);
    return feof(sf);
 }
@@ -2335,7 +2353,7 @@ void Phase1(void)
    Eof = feof(sf);
    while (!Eof || IncludeLevel > 0)
    {
-      ++LiNo;
+      ++LiNo; ++TotalLiNo;
       l = strlen(Line);
       if (l && Line[l-1] == 10) Line[--l] = 0; // Remove linefeed
       if (l && Line[l-1] == 13) Line[--l] = 0; // Remove return
@@ -2365,12 +2383,12 @@ void Phase2(void)
       exit(1);
    }
    rewind(sf);
-   LiNo = 0;
+   LiNo = 0; TotalLiNo = 0;
    fgets(Line,sizeof(Line),sf);
    Eof = feof(sf);
    while (!Eof || IncludeLevel > 0)
    {
-      ++LiNo;
+      ++LiNo; ++TotalLiNo;
       l = strlen(Line);
       if (l && Line[l-1] == 10) Line[--l] = 0; // Remove linefeed
       if (l && Line[l-1] == 13) Line[--l] = 0; // Remove return
@@ -2529,7 +2547,10 @@ int main(int argc, char *argv[])
       else if (!strncmp(argv[ic],"-d",2)) DefineLabel(argv[ic]+2,&v,1);
       else if (argv[ic][0] >= 'A')
       {
-              if (!Src[0]) strcpy(Src,argv[ic]);
+         if (!Src) {
+                 Src = malloc(strlen(argv[ic] + 4 + 1));
+                 strcpy(Src,argv[ic]);
+              }
          else if (!Lst[0]) strcpy(Lst,argv[ic]);
       }
       else
@@ -2538,7 +2559,7 @@ int main(int argc, char *argv[])
          exit(1);
       }
    }
-   if (!Src[0])
+   if (!Src)
    {
       printf("*** missing filename fpr assembler source file ***\n");
       printf("\nUsage: bsa [-d -D -x] <source> [<bin> <list>]\n");
@@ -2570,7 +2591,8 @@ int main(int argc, char *argv[])
       printf("Could not open <%s>\n",Src);
       exit(1);
    }
-   IncludeStack[0] = sf;
+   IncludeStack[0].fp = sf;
+   IncludeStack[0].Src = Src;
    lf = fopen(Lst,"w");  // Listing
    if (Debug) df = fopen("Debug.lst","w");
 
@@ -2589,7 +2611,7 @@ int main(int argc, char *argv[])
    fclose(sf);
    fclose(lf);
    if (df) fclose(df);
-   printf("* Source Lines: %6d                    *\n",LiNo  );
+   printf("* Source Lines: %6d                    *\n",TotalLiNo);
    printf("* Symbols     : %6d                    *\n",Labels);
    printf("* Macros      : %6d                    *\n",Macros);
    printf("*******************************************\n");
