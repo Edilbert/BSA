@@ -4,7 +4,7 @@
 Bit Shift Assembler
 *******************
 
-Final version: 05-Feb-2017
+Version: 12-Mar-2017
 
 The assembler was developed and tested on an iMAC with OSX Mavericks.
 Using no specific options of the host system, it should run on any
@@ -1046,7 +1046,7 @@ char ModuleName[ML];
 #define LBSS 2
 #define LPOS 3
 
-#define MAXLAB 4096
+#define MAXLAB 8000
 
 struct LabelStruct
 {
@@ -2347,7 +2347,8 @@ char *ParseByteData(char *p, int Charset)
 char *IsData(char *p)
 {
    p = SkipSpace(p+1);
-   if (pc < 0 && strncasecmp(p,"ORG",3) && strncasecmp(p,"BSS",3))
+   if (pc < 0 && strncasecmp(p,"ORG",3) && strncasecmp(p,"BSS",3) &&
+       strncasecmp(p,"STORE",5))
    {
       ErrorLine(p);
       ErrorMsg("Undefined program counter (PC)\n");
@@ -2416,6 +2417,17 @@ char * SplitOperand(char *p)
    }
    Operand[l] = 0; // end marker
    while (l && isspace(Operand[l-1])) Operand[--l] = 0;
+
+   // Allow BIT mnemonic with missing operand
+   // used to skip next 2 byte statement
+
+   if (l == 0 && oc == 0x24)
+   {
+      oc = 0x2c;
+      am = Impl;
+      il = 1;
+      return p;
+   }
 
    // Check for existing operand
 
@@ -2509,6 +2521,8 @@ void AdjustOpcode(char *p)
          return;
       }
    }
+   if (oc == 0x2c && am == Impl) return; // BIT
+
    ErrorMsg("Illegal address mode %d for %s\n",am,set[oc].mne);
    ErrorLine(p);
    exit(1);
