@@ -4,7 +4,7 @@
 Bit Shift Assembler
 *******************
 
-Version: 12-Mar-2017
+Version: 14-Nov-2017
 
 The assembler was developed and tested on an iMAC with OSX Mavericks.
 Using no specific options of the host system, it should run on any
@@ -2855,7 +2855,6 @@ void RecordMacro(char *p)
          strcpy(Mac[j].Name,Macro);
          Mac[j].Narg = an;
          fgets(Line,sizeof(Line),sf);
-         if (pf) fputs(Line,pf);
          while (!feof(sf) && !Strcasestr(Line,"ENDMAC"))
          {
             ++LiNo;
@@ -2896,7 +2895,6 @@ void RecordMacro(char *p)
                strcat(Mac[j].Body,Buf);
             }
             fgets(Line,sizeof(Line),sf);
-            if (pf) fputs(Line,pf);
          }
          Macros++;
       }
@@ -3011,6 +3009,7 @@ void ParseLine(char *cp)
       if (df)         fprintf(df,"%5d SKIP          %s\n",LiNo,Line);
       return;
    }
+   if (pf && Phase == 2) fprintf(pf,"%s\n",Line); // write to preprocessed file
    if (*cp == 0 || *cp == ';')  // Empty or comment only
    {
       if (Phase == 2)
@@ -3092,7 +3091,6 @@ int CloseInclude(void)
    sf = IncludeStack[--IncludeLevel].fp;
    LiNo = IncludeStack[IncludeLevel].LiNo;
    fgets(Line,sizeof(Line),sf);
-   if (pf) fputs(Line,pf);
    ForcedEnd = 0;
    return feof(sf);
 }
@@ -3104,7 +3102,6 @@ void Phase1(void)
    Phase = 1;
    ForcedEnd = 0;
    fgets(Line,sizeof(Line),sf);
-   if (pf) fputs(Line,pf);
    Eof = feof(sf);
    while (!Eof || IncludeLevel > 0)
    {
@@ -3119,7 +3116,6 @@ void Phase1(void)
       else
       {
          fgets(Line,sizeof(Line),sf);
-         if (pf) fputs(Line,pf);
       }
       Eof = feof(sf) || ForcedEnd;;
       if (Eof && IncludeLevel > 0) Eof = CloseInclude();
@@ -3361,7 +3357,7 @@ int main(int argc, char *argv[])
 
    printf("\n");
    printf("*******************************************\n");
-   printf("* Bit Shift Assembler                     *\n");
+   printf("* Bit Shift Assembler 14-Nov-2017         *\n");
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
