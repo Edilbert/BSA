@@ -3282,6 +3282,11 @@ void WriteBinaries(void)
       if (df) fprintf(df,"Storing $%4.4x - $%4.4x <%s>\n",
                       SFA[i],SFA[i]+SFL[i],SFF[i]);
       bf = fopen(SFF[i],"wb");
+      if (!bf)
+      {
+         ErrorMsg("Could not open file <%s>\n",SFF[i]);
+         exit(1);
+      }
       if (WriteLoadAddress)
       {
          lo = SFA[i] & 0xff;
