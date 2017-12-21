@@ -2114,7 +2114,7 @@ char *ParseStoreData(char *p)
    p = EvalOperand(p+1,&Length,0);
    if (Length < 0 || Length > 0x10000)
    {
-      ErrorMsg("Illegal length for STORE %d\n",Start);
+      ErrorMsg("Illegal length for STORE %d\n",Length);
       exit(1);
    }
    p = NeedChar(p,',');
@@ -2902,20 +2902,20 @@ void RecordMacro(char *p)
       {
          PrintLiNo(1);
          ++LiNo;
-         fprintf(lf,"              %s\n",Line);
+         fprintf(lf,"            %s\n",Line);
          do
          {
             fgets(Line,sizeof(Line),sf);
             PrintLiNo(1);
             ++LiNo;
-            fprintf(lf,"              %s",Line);
+            fprintf(lf,"            %s",Line);
          } while (!feof(sf) && !Strcasestr(Line,"ENDMAC"));
          LiNo-=2;
       }
       else if (Phase == 1)
       {
          ++ErrNum;
-         ErrorMsg("Duplicate macel [%s]\n",Macro);
+         ErrorMsg("Duplicate macro [%s]\n",Macro);
          exit(1);
       }
       if (df) fprintf(df,"Macro [%s] = %s\n",Mac[j].Name,Mac[j].Body);
@@ -3282,11 +3282,6 @@ void WriteBinaries(void)
       if (df) fprintf(df,"Storing $%4.4x - $%4.4x <%s>\n",
                       SFA[i],SFA[i]+SFL[i],SFF[i]);
       bf = fopen(SFF[i],"wb");
-      if (!bf)
-      {
-         ErrorMsg("Could not open file <%s>\n",SFF[i]);
-         exit(1);
-      }
       if (WriteLoadAddress)
       {
          lo = SFA[i] & 0xff;
@@ -3362,7 +3357,7 @@ int main(int argc, char *argv[])
 
    printf("\n");
    printf("*******************************************\n");
-   printf("* Bit Shift Assembler 14-Nov-2017         *\n");
+   printf("* Bit Shift Assembler 21-Dec-2017         *\n");
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
