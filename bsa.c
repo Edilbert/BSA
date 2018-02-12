@@ -966,6 +966,7 @@ int ErrNum;
 int LoadAddress = UNDEF;
 int WriteLoadAddress = 0;
 int Petscii = 0;
+int MacroStopped;
 int InsideMacro;
 int CurrentMacro;
 int ModuleStart;       // Address of a module
@@ -2909,6 +2910,7 @@ void RecordMacro(char *p)
             PrintLiNo(1);
             ++LiNo;
             fprintf(lf,"            %s",Line);
+            if (pf) fprintf(pf,"%s",Line);
          } while (!feof(sf) && !Strcasestr(Line,"ENDMAC"));
          LiNo-=2;
       }
@@ -2984,6 +2986,7 @@ void NextMacLine(char *w)
       CurrentMacro = 0;
       --InsideMacro;
       MacroPointer = NULL;
+      MacroStopped = 1;
    }
    *w = 0;
 }
@@ -3009,7 +3012,11 @@ void ParseLine(char *cp)
       if (df)         fprintf(df,"%5d SKIP          %s\n",LiNo,Line);
       return;
    }
-   if (pf && Phase == 2) fprintf(pf,"%s\n",Line); // write to preprocessed file
+   if (pf && Phase == 2 && !InsideMacro)
+   {
+       if (MacroStopped) MacroStopped = 0;
+       else fprintf(pf,"%s\n",Line); // write to preprocessed file
+   }
    if (*cp == 0 || *cp == ';')  // Empty or comment only
    {
       if (Phase == 2)
