@@ -4,7 +4,7 @@
 Bit Shift Assembler
 *******************
 
-Version: 14-Nov-2017
+Version: 19-Feb-2018
 
 The assembler was developed and tested on an iMAC with OSX Mavericks.
 Using no specific options of the host system, it should run on any
@@ -1843,7 +1843,7 @@ struct unaop_struct unaop[UNAOPS] =
    {'$',&op_hex}, // hex constant
    { 39,&op_cha}, // char constant
    {'%',&op_bin}, // binary constant
-   {'?',&op_len}, // length of .BYTE data line
+   {'?',&op_len}  // length of .BYTE data line
 };
 
 int op_mul(int l, int r) { return l *  r; }
@@ -2326,7 +2326,11 @@ char *ParseByteData(char *p, int Charset)
       exit(1);
    }
    j = AddressIndex(pc);
-   if (j >= 0) lab[j].Bytes = l;
+   if (j >= 0)
+   for ( ; j < Labels ; ++j) // There may be multiple lables on this address
+   {
+       if (lab[j].Address == pc) lab[j].Bytes = l;
+   }
    if (j >= 0 && df) fprintf(df,"Byte label [%s] $%4.4x $%4.4x %d bytes\n",
                    lab[j].Name,lab[j].Address,pc,l);
    if (Phase == 2)
@@ -3322,7 +3326,7 @@ int main(int argc, char *argv[])
       else if (!strcmp(argv[ic],"-n")) WithLiNo = 1;
       else if (!strcmp(argv[ic],"-p")) Preprocess = 1;
       else if (!strncmp(argv[ic],"-D",2)) DefineLabel(argv[ic]+2,&v,1);
-      else if (argv[ic][0] >= 'A' || argv[ic][0] == '.')
+      else if (argv[ic][0] >= '0' || argv[ic][0] == '.')
       {
          if (!Src) {
                  Src = MallocOrDie(strlen(argv[ic] + 4 + 1));
@@ -3364,7 +3368,7 @@ int main(int argc, char *argv[])
 
    printf("\n");
    printf("*******************************************\n");
-   printf("* Bit Shift Assembler 21-Dec-2017         *\n");
+   printf("* Bit Shift Assembler 19-Feb-2018         *\n");
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
