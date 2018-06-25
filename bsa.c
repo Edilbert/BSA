@@ -4,7 +4,7 @@
 Bit Shift Assembler
 *******************
 
-Version: 19-Feb-2018
+Version: 25-Jun-2018
 
 The assembler was developed and tested on an iMAC with OSX Mavericks.
 Using no specific options of the host system, it should run on any
@@ -2434,6 +2434,17 @@ char * SplitOperand(char *p)
       return p;
    }
 
+   // tolerate Accumulator with missing operand
+
+   if (l == 0 && (CPU_Type <= CPU_65C02) &&
+      (oc == 0x0a || oc == 0x2a || oc == 0x4a || oc == 0x6a))
+   {
+      Operand[0] = 0;
+      am = Accu;
+      il = 1;
+      return p;
+   }
+
    // Check for existing operand
 
    if (l < 1)
@@ -3328,10 +3339,11 @@ int main(int argc, char *argv[])
       else if (!strncmp(argv[ic],"-D",2)) DefineLabel(argv[ic]+2,&v,1);
       else if (argv[ic][0] >= '0' || argv[ic][0] == '.')
       {
-         if (!Src) {
-                 Src = MallocOrDie(strlen(argv[ic] + 4 + 1));
-                 strcpy(Src,argv[ic]);
-              }
+         if (!Src)
+         {
+              Src = MallocOrDie(strlen(argv[ic]) + 4 + 1);
+              strcpy(Src,argv[ic]);
+         }
          else if (!Lst[0]) strcpy(Lst,argv[ic]);
       }
       else
@@ -3368,7 +3380,7 @@ int main(int argc, char *argv[])
 
    printf("\n");
    printf("*******************************************\n");
-   printf("* Bit Shift Assembler 19-Feb-2018         *\n");
+   printf("* Bit Shift Assembler 25-Jun-2018         *\n");
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
