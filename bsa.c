@@ -193,8 +193,8 @@ char *Strcasestr(const char *s1, const char *s2)
 
     int i;
 
-    for (i=0 ; i < strlen(s1)+1 ; ++i) h1[i] = tolower(s1[i]);
-    for (i=0 ; i < strlen(s2)+1 ; ++i) h2[i] = tolower(s2[i]);
+    for (i=0 ; i <= strlen(s1) ; ++i) h1[i] = tolower(s1[i]);
+    for (i=0 ; i <= strlen(s2) ; ++i) h2[i] = tolower(s2[i]);
 
     r = strstr(h1,h2);
     if (r)
@@ -203,6 +203,34 @@ char *Strcasestr(const char *s1, const char *s2)
        r += i;
     }
     return r;
+}
+
+int Strcasecmp(const char *s1, const char *s2)
+{
+   char h1[256];
+   char h2[256];
+   char *r;
+
+    int i;
+
+    for (i=0 ; i <= strlen(s1) ; ++i) h1[i] = tolower(s1[i]);
+    for (i=0 ; i <= strlen(s2) ; ++i) h2[i] = tolower(s2[i]);
+
+    return strcmp(h1,h2);
+}
+
+int Strncasecmp(const char *s1, const char *s2, int n)
+{
+   char h1[256];
+   char h2[256];
+   char *r;
+
+    int i;
+
+    for (i=0 ; i <= strlen(s1) ; ++i) h1[i] = tolower(s1[i]);
+    for (i=0 ; i <= strlen(s2) ; ++i) h2[i] = tolower(s2[i]);
+
+    return strncmp(h1,h2,n);
 }
 
 void *AssertAlloc(void *p)
@@ -1217,7 +1245,7 @@ int IsInstruction(char *p)
    for (is = AM_Inherent_Tab; is->Opcode >= 0; ++is)
    {
       l = strlen(is->Mnemonic);
-      if (!strncasecmp(p,is->Mnemonic,l) && !isym(p[l]))
+      if (!Strncasecmp(p,is->Mnemonic,l) && !isym(p[l]))
       {
          // printf("\n*** %2.2x %s ***\n",is->Opcode,is->Mnemonic);
          am  = AM_Inherent;
@@ -1231,7 +1259,7 @@ int IsInstruction(char *p)
    for (rs = AM_Register_Tab; rs->Opcode >= 0; ++rs)
    {
       l = strlen(rs->Mnemonic);
-      if (!strncasecmp(p,rs->Mnemonic,l) && !isym(p[l]))
+      if (!Strncasecmp(p,rs->Mnemonic,l) && !isym(p[l]))
       {
          am  = AM_Register;
          Mne = rs->Mnemonic;
@@ -1244,7 +1272,7 @@ int IsInstruction(char *p)
    if (isalpha(p[0]) && isalpha(p[1]) && isalpha(p[2]) && !isym(p[3]))
    for (i=0 ; i < 256 ; ++i)
    {
-      if (!strncasecmp(p,set[i].mne,3))
+      if (!Strncasecmp(p,set[i].mne,3))
       {
          if (set[i].cpu > CPU_Type && set[i].amo == Impl)
          {
@@ -1264,7 +1292,7 @@ int IsInstruction(char *p)
        (p[3] >= '0' && p[3] <= '7') && !isym(p[4]))
    for (i=0 ; i < 256 ; ++i)
    {
-      if (!strncasecmp(p,set[i].mne,4) && set[i].cpu <= CPU_Type)
+      if (!Strncasecmp(p,set[i].mne,4) && set[i].cpu <= CPU_Type)
          return i; // Is instruction!
    }
 
@@ -1351,13 +1379,13 @@ char *SetBSS(char *p)
 
 int StrCmp(const char *s1, const char *s2)
 {
-   if (IgnoreCase) return strcasecmp(s1,s2);
+   if (IgnoreCase) return Strcasecmp(s1,s2);
    else            return strcmp(s1,s2);
 }
 
 int StrnCmp(const char *s1, const char *s2, size_t n)
 {
-   if (IgnoreCase) return strncasecmp(s1,s2,n);
+   if (IgnoreCase) return Strncasecmp(s1,s2,n);
    else            return strncmp(s1,s2,n);
 }
 
@@ -1442,7 +1470,7 @@ char *DefineLabel(char *p, int *val, int Locked)
       *val = v;
       if (Locked) lab[j].Locked = Locked;
    }
-   else if (!strncasecmp(p,".BSS",4))
+   else if (!Strncasecmp(p,".BSS",4))
    {
       p = EvalOperand(p+4,&v,0);
       j = LabelIndex(Label);
@@ -2080,7 +2108,7 @@ char *ParseCPUData(char *p)
    p = SkipSpace(p);
    for (CPU_Type = CPU_6502 ; CPU_Type < CPU_End ; ++CPU_Type)
    {
-      if (!strncasecmp(p,CPU_Name[CPU_Type],strlen(CPU_Name[CPU_Type]))) break;
+      if (!Strncasecmp(p,CPU_Name[CPU_Type],strlen(CPU_Name[CPU_Type]))) break;
    }
    if (CPU_Type == CPU_End)
    {
@@ -2352,31 +2380,31 @@ char *ParseByteData(char *p, int Charset)
 char *IsData(char *p)
 {
    p = SkipSpace(p+1);
-   if (pc < 0 && strncasecmp(p,"ORG",3) && strncasecmp(p,"BSS",3) &&
-       strncasecmp(p,"STORE",5))
+   if (pc < 0 && Strncasecmp(p,"ORG",3) && Strncasecmp(p,"BSS",3) &&
+       Strncasecmp(p,"STORE",5))
    {
       ErrorLine(p);
       ErrorMsg("Undefined program counter (PC)\n");
       exit(1);
    }
-        if (!strncasecmp(p,"WORD",4))    p = ParseWordData(p+4);
-   else if (!strncasecmp(p,"BYTE",4))    p = ParseByteData(p+4,ASCII);
-   else if (!strncasecmp(p,"PET",3))     p = ParseByteData(p+3,PETSCII);
-   else if (!strncasecmp(p,"SCREEN",6))  p = ParseByteData(p+6,SCREENCODE);
-   else if (!strncasecmp(p,"BITS",4))    p = ParseBitData(p+4);
-   else if (!strncasecmp(p,"LITS",4))    p = ParseLitData(p+4);
-   else if (!strncasecmp(p,"QUAD",4))    p = ParseLongData(p+4,4);
-   else if (!strncasecmp(p,"REAL",4))    p = ParseRealData(p+4);
-   else if (!strncasecmp(p,"FILL",4))    p = ParseFillData(p+4);
-   else if (!strncasecmp(p,"BSS",3))     p = ParseBSSData(p+4);
-   else if (!strncasecmp(p,"STORE",5))   p = ParseStoreData(p+5);
-   else if (!strncasecmp(p,"CPU",3))     p = ParseCPUData(p+3);
-   else if (!strncasecmp(p,"CASE",4))    p = ParseCaseData(p+4);
-   else if (!strncasecmp(p,"ORG",3))     p = SetPC(p);
-   else if (!strncasecmp(p,"LOAD",4))    WriteLoadAddress = 1;
-   else if (!strncasecmp(p,"INCLUDE",7)) p = IncludeFile(p+7);
-   else if (!strncasecmp(p,"SIZE",4))    ListSizeInfo();
-   else if (!strncasecmp(p,"END",3))
+        if (!Strncasecmp(p,"WORD",4))    p = ParseWordData(p+4);
+   else if (!Strncasecmp(p,"BYTE",4))    p = ParseByteData(p+4,ASCII);
+   else if (!Strncasecmp(p,"PET",3))     p = ParseByteData(p+3,PETSCII);
+   else if (!Strncasecmp(p,"SCREEN",6))  p = ParseByteData(p+6,SCREENCODE);
+   else if (!Strncasecmp(p,"BITS",4))    p = ParseBitData(p+4);
+   else if (!Strncasecmp(p,"LITS",4))    p = ParseLitData(p+4);
+   else if (!Strncasecmp(p,"QUAD",4))    p = ParseLongData(p+4,4);
+   else if (!Strncasecmp(p,"REAL",4))    p = ParseRealData(p+4);
+   else if (!Strncasecmp(p,"FILL",4))    p = ParseFillData(p+4);
+   else if (!Strncasecmp(p,"BSS",3))     p = ParseBSSData(p+4);
+   else if (!Strncasecmp(p,"STORE",5))   p = ParseStoreData(p+5);
+   else if (!Strncasecmp(p,"CPU",3))     p = ParseCPUData(p+3);
+   else if (!Strncasecmp(p,"CASE",4))    p = ParseCaseData(p+4);
+   else if (!Strncasecmp(p,"ORG",3))     p = SetPC(p);
+   else if (!Strncasecmp(p,"LOAD",4))    WriteLoadAddress = 1;
+   else if (!Strncasecmp(p,"INCLUDE",7)) p = IncludeFile(p+7);
+   else if (!Strncasecmp(p,"SIZE",4))    ListSizeInfo();
+   else if (!Strncasecmp(p,"END",3))
    {
       p += 3; ForcedEnd = 1;
       PrintLine();
@@ -2486,7 +2514,7 @@ char * SplitOperand(char *p)
       Sule = strlen(Suff);
 
       if ((Operand[0] == Pref || Pref == ' ') &&
-         l > Sule && !strcasecmp((const char *)(Operand+l-Sule),Suff))
+         l > Sule && !Strcasecmp((const char *)(Operand+l-Sule),Suff))
       for (i=0 ; i < 256 ; ++i)
       {
           if (CPU_Type >= set[i].cpu &&       // CPU      match ?
@@ -2559,7 +2587,7 @@ int CheckCondition(char *p)
    r = 0;
    if (*p != '#') return 0; // No preprocessing
    p = SkipSpace(p+1);
-   if (!strncasecmp(p,"error", 5) && (Phase == 1))
+   if (!Strncasecmp(p,"error", 5) && (Phase == 1))
    {
       CheckSkip();
       if (Skipping)
@@ -2571,8 +2599,8 @@ int CheckCondition(char *p)
       free(msg);
       exit(1);
    }
-   Ifdef = !strncasecmp(p,"ifdef ",6);
-   Ifval = !strncasecmp(p,"if "   ,3);
+   Ifdef = !Strncasecmp(p,"ifdef ",6);
+   Ifval = !Strncasecmp(p,"if "   ,3);
    if (Ifdef || Ifval)
    {
       r = 1;
@@ -2604,7 +2632,7 @@ int CheckCondition(char *p)
       }
       if (df) fprintf(df,"%5d %4.4x          %s\n",LiNo,SkipLine[IfLevel],Line);
    }
-   else if (!strncasecmp(p,"else",4) && (p[4] == 0 || isspace(p[4])))
+   else if (!Strncasecmp(p,"else",4) && (p[4] == 0 || isspace(p[4])))
    {
       r = 1;
       SkipLine[IfLevel] = !SkipLine[IfLevel];
@@ -2612,7 +2640,7 @@ int CheckCondition(char *p)
       PrintLiNo(1);
       if (Phase == 2) fprintf(lf,"              %s\n",Line);
    }
-   if (!strncasecmp(p,"endif",5) && (p[5] == 0 || isspace(p[5])))
+   if (!Strncasecmp(p,"endif",5) && (p[5] == 0 || isspace(p[5])))
    {
       r = 1;
       IfLevel--;
@@ -3043,7 +3071,7 @@ void ParseLine(char *cp)
    }
    if (isalpha(*cp))            // Macro, Label or mnemonic
    {
-      if (!strncasecmp(cp,"MACRO ",6))
+      if (!Strncasecmp(cp,"MACRO ",6))
       {
          RecordMacro(cp+6);
          return;
@@ -3371,11 +3399,11 @@ int main(int argc, char *argv[])
    strcpy(Pre,Src);
    strcat(Pre,".pp");
    if (!Lst[0]) strcpy(Lst,Src);
-   if (!(strlen(Src) > 4 && !strcasecmp(Src+strlen(Src)-4,".asm")))
+   if (!(strlen(Src) > 4 && !Strcasecmp(Src+strlen(Src)-4,".asm")))
        strcat(Src,".asm");
-   if ( (strlen(Lst) > 4 && !strcasecmp(Lst+strlen(Lst)-4,".asm")))
+   if ( (strlen(Lst) > 4 && !Strcasecmp(Lst+strlen(Lst)-4,".asm")))
        Lst[strlen(Lst)-4] = 0;
-   if (!(strlen(Lst) > 4 && !strcasecmp(Lst+strlen(Lst)-4,".lst")))
+   if (!(strlen(Lst) > 4 && !Strcasecmp(Lst+strlen(Lst)-4,".lst")))
        strcat(Lst,".lst");
 
    printf("\n");
