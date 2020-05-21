@@ -190,47 +190,42 @@ char *Strcasestr(const char *s1, const char *s2)
    char h1[256];
    char h2[256];
    char *r;
+   unsigned int i;
 
-    int i;
+   for (i=0 ; i <= strlen(s1) ; ++i) h1[i] = tolower(s1[i]);
+   for (i=0 ; i <= strlen(s2) ; ++i) h2[i] = tolower(s2[i]);
 
-    for (i=0 ; i <= strlen(s1) ; ++i) h1[i] = tolower(s1[i]);
-    for (i=0 ; i <= strlen(s2) ; ++i) h2[i] = tolower(s2[i]);
-
-    r = strstr(h1,h2);
-    if (r)
-    {
-       i = r - h1;
-       r += i;
-    }
-    return r;
+   r = strstr(h1,h2);
+   if (r)
+   {
+      i = r - h1;
+      r += i;
+   }
+   return r;
 }
 
 int Strcasecmp(const char *s1, const char *s2)
 {
    char h1[256];
    char h2[256];
-   char *r;
+   unsigned int i;
 
-    int i;
+   for (i=0 ; i <= strlen(s1) ; ++i) h1[i] = tolower(s1[i]);
+   for (i=0 ; i <= strlen(s2) ; ++i) h2[i] = tolower(s2[i]);
 
-    for (i=0 ; i <= strlen(s1) ; ++i) h1[i] = tolower(s1[i]);
-    for (i=0 ; i <= strlen(s2) ; ++i) h2[i] = tolower(s2[i]);
-
-    return strcmp(h1,h2);
+   return strcmp(h1,h2);
 }
 
 int Strncasecmp(const char *s1, const char *s2, int n)
 {
    char h1[256];
    char h2[256];
-   char *r;
+   unsigned int i;
 
-    int i;
+   for (i=0 ; i <= strlen(s1) ; ++i) h1[i] = tolower(s1[i]);
+   for (i=0 ; i <= strlen(s2) ; ++i) h2[i] = tolower(s2[i]);
 
-    for (i=0 ; i <= strlen(s1) ; ++i) h1[i] = tolower(s1[i]);
-    for (i=0 ; i <= strlen(s2) ; ++i) h2[i] = tolower(s2[i]);
-
-    return strncmp(h1,h2,n);
+   return strncmp(h1,h2,n);
 }
 
 void *AssertAlloc(void *p)
@@ -981,7 +976,7 @@ struct cpu_struct set[256] =
    {3, Lonx, "SBC" }    // ff  BBS7
 };
 
-#define UNDEF 0xffff0000
+#define UNDEF 0xff0000
 
 int SkipHex = 0;    // Switch on with -x
 int Debug = 0;      // Switch on with -d
@@ -1340,6 +1335,7 @@ char *ParseCaseData(char *p)
 
 char *SetPC(char *p)
 {
+   int v;
    if (*p == '*')
    {
       p = NeedChar(p,'=');
@@ -1351,7 +1347,9 @@ char *SetPC(char *p)
       }
    }
    else p += 3; // .ORG syntax
-   p = EvalOperand(p+1,&pc,0);
+   p = EvalOperand(p+1,&v,0);
+   if (df) fprintf(df,"PC = %4.4x\n",v);
+   pc = v;
    if (LoadAddress < 0) LoadAddress = pc;
    PrintPCLine();
    if (GenStart > pc) GenStart = pc; // remember lowest pc value
@@ -1512,7 +1510,7 @@ char *DefineLabel(char *p, int *val, int Locked)
          lab[j].Att = MallocOrDie(sizeof(int));
          Labels++;
       }
-      else if (lab[j].Address < 0) lab[j].Address = pc;
+      else if (lab[j].Address == UNDEF) lab[j].Address = pc;
       else if (lab[j].Address != pc && !lab[j].Locked)
       {
          ++ErrNum;
@@ -1759,8 +1757,15 @@ char *EvalDecValue(char *p, int *v)
 
 char *EvalCharValue(char *p, int *v)
 {
+   // special code for Commodore syntax lda #'
+
+   if (*p == 0 || *p == ' ')
+   {
+      *v = ' ';
+      return p + strlen(p);
+   }
    *v = *p++;
-   if (*p != '\'')
+   if (*p != '\'' && *p != 0)
    {
       ++ErrNum;
       ErrorMsg("Missing ' delimiter after character operand\n");
@@ -1953,7 +1958,9 @@ char *EvalOperand(char *p, int *v, int prio)
       for (i=0 ; i < UNAOPS ; ++i)
       if (*p == unaop[i].op)
       {
+          if (df) fprintf(df,"op [%c] * = %4.4x\n", unaop[i].op,(unsigned int)pc);
           p = unaop[i].foo(p,v);
+          if (df) fprintf(df,"op [%c] v = %4.4x\n", unaop[i].op,(unsigned int)*v);
           break;
       }
    }
@@ -2379,16 +2386,10 @@ char *ParseByteData(char *p, int Charset)
 
 char *IsData(char *p)
 {
-   p = SkipSpace(p+1);
-   if (pc < 0 && Strncasecmp(p,"ORG",3) && Strncasecmp(p,"BSS",3) &&
-       Strncasecmp(p,"STORE",5))
-   {
-      ErrorLine(p);
-      ErrorMsg("Undefined program counter (PC)\n");
-      exit(1);
-   }
         if (!Strncasecmp(p,"WORD",4))    p = ParseWordData(p+4);
+   else if (!Strncasecmp(p,"WOR",3))     p = ParseWordData(p+3);
    else if (!Strncasecmp(p,"BYTE",4))    p = ParseByteData(p+4,ASCII);
+   else if (!Strncasecmp(p,"BYT",3))     p = ParseByteData(p+3,ASCII);
    else if (!Strncasecmp(p,"PET",3))     p = ParseByteData(p+3,PETSCII);
    else if (!Strncasecmp(p,"SCREEN",6))  p = ParseByteData(p+6,SCREENCODE);
    else if (!Strncasecmp(p,"BITS",4))    p = ParseBitData(p+4);
@@ -2404,18 +2405,16 @@ char *IsData(char *p)
    else if (!Strncasecmp(p,"LOAD",4))    WriteLoadAddress = 1;
    else if (!Strncasecmp(p,"INCLUDE",7)) p = IncludeFile(p+7);
    else if (!Strncasecmp(p,"SIZE",4))    ListSizeInfo();
-   else if (!Strncasecmp(p,"END",3))
-   {
-      p += 3; ForcedEnd = 1;
-      PrintLine();
-   }
+   else if (!Strncasecmp(p,"SKI",3))     p += strlen(p);
+   else if (!Strncasecmp(p,"PAG",3))     p += strlen(p);
+   else if (!Strncasecmp(p,"END",3))     p += strlen(p);
    else
    {
       ErrorMsg("Unknown pseudo op\n");
       ErrorLine(p);
       exit(1);
    }
-   if (pc > 0x10000)
+   if (pc > 0x10000 && pc != UNDEF)
    {
       ErrorMsg("Program counter overflow\n");
       ErrorLine(p);
@@ -2428,6 +2427,7 @@ char *IsData(char *p)
 char * SplitOperand(char *p)
 {
    int i,l,inquo,inapo,Sule,amo;
+   int SuffMatch;
    char Pref;
    char *Suff;
    char *Mnem;
@@ -2513,8 +2513,15 @@ char * SplitOperand(char *p)
       Suff = Suffix[amo];
       Sule = strlen(Suff);
 
-      if ((Operand[0] == Pref || Pref == ' ') &&
-         l > Sule && !Strcasecmp((const char *)(Operand+l-Sule),Suff))
+      // check for Commodore Syntax (ind)y
+
+      if (amo == Indy && l > 2 && Operand[l-2] == ')' &&
+         (Operand[l-1] == 'Y' || Operand[l-1] == 'y'))
+         SuffMatch = 1;
+      else
+      SuffMatch = (l > Sule && !Strcasecmp((const char *)(Operand+l-Sule),Suff));
+
+      if ((Operand[0] == Pref || Pref == ' ') && SuffMatch)
       for (i=0 ; i < 256 ; ++i)
       {
           if (CPU_Type >= set[i].cpu &&       // CPU      match ?
@@ -2524,7 +2531,9 @@ char * SplitOperand(char *p)
           {
             am = amo;
             il = Lenfix[am];
-            Operand[l-=Sule] = 0;
+            // specual code for (ind)y
+            if (amo == Indy && Operand[l-2] == ')') Operand[l-2] = 0;
+            else Operand[l-=Sule] = 0;
             if (Pref == '(') Operand[0] = ' ';
             if (df) fprintf(df,"Split {%c} {%s} {%s}\n",Pref,Operand,Suff);
             return p;
@@ -3098,7 +3107,7 @@ void ParseLine(char *cp)
    if (*cp ==  0 ) return;             // No code
    if (*cp == '*') cp = SetPC(cp);     // Set program counter
    if (*cp == '&') cp = SetBSS(cp);    // Set BSS counter
-   if (*cp == '.') cp = IsData(cp);    // Data
+   if (*cp == '.') cp = IsData(cp+1);  // Data
    if (ForcedEnd) return;
    if (oc < 0) oc = IsInstruction(cp); // Check for mnemonic after label
    if (oc >= 0)
