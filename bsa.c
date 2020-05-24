@@ -1380,11 +1380,7 @@ char *ParseLongData(char *p, int l)
 {
    unsigned int v;
    int i;
-   union ulb
-   {
-     int l;
-     unsigned char b[4];
-   } lb;
+   int w;
 
    p = SkipSpace(p);
    if (*p == '$')
@@ -1398,8 +1394,12 @@ char *ParseLongData(char *p, int l)
    }
    else
    {
-      lb.l = atoi(p);
-      for (i=0 ; i < 4 ; ++i) Operand[i] = lb.b[3-i];
+      w = atoi(p);
+      for (i=3 ; i >= 0 ; --i)
+      {
+         Operand[i] = w & 255;
+         w >>= 8;
+      }
    }
    if (Phase == 2)
    {
@@ -1418,6 +1418,7 @@ char *ParseRealData(char *p)
    unsigned int v;
    int i,mansize;
    int Sign,Exponent;
+
    union udb
    {
      double d;
