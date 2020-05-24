@@ -1079,23 +1079,6 @@ char *NeedChar(char *p, char c)
    return strchr(p,c);
 }
 
-
-char *EvalAddress(char *p, int *a)
-{
-   p=SkipSpace(p);
-   if (*p == '$')
-   {
-      sscanf(++p,"%x",a);
-      while (isxdigit(*p)) ++p;
-      p = SkipSpace(p);
-   }
-   if (*a < 0 || *a > 0xffff)
-   {
-      ErrorMsg("Address %x out of range\n",*a);
-   }
-   return p;
-}
-
 char *EvalOperand(char *, int *, int);
 
 char *ParseCaseData(char *p)
