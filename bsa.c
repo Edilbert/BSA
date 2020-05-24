@@ -1378,7 +1378,8 @@ char *EvalSymBytes(char *p, int *v)
 
 char *ParseLongData(char *p, int l)
 {
-   int i,v;
+   unsigned int v;
+   int i;
    union ulb
    {
      int l;
@@ -1414,7 +1415,8 @@ char *ParseLongData(char *p, int l)
 
 char *ParseRealData(char *p)
 {
-   int i,v,mansize;
+   unsigned int v;
+   int i,mansize;
    int Sign,Exponent;
    union udb
    {
@@ -1540,8 +1542,10 @@ char *EvalCharValue(char *p, int *v)
 
 char *EvalHexValue(char *p, int *v)
 {
-   sscanf(p,"%x",v);
+   unsigned int w;
+   sscanf(p,"%x",&w);
    while (isxdigit(*p)) ++p;
+   *v = w;
    return p;
 }
 
