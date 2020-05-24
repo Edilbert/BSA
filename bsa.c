@@ -4,7 +4,7 @@
 Bit Shift Assembler
 *******************
 
-Version: 25-Jun-2018
+Version: 24-May-2020
 
 The assembler was developed and tested on an iMAC with OSX Mavericks.
 Using no specific options of the host system, it should run on any
@@ -185,65 +185,83 @@ For more examples see the complete operating system for C64 and VC20
 #include <math.h>
 #include <ctype.h>
 
-char *Strcasestr(const char *s1, const char *s2)
-{
-   char h1[256];
-   char h2[256];
-   char *r;
-   unsigned int i;
+// The following string routines are not called from a library
+// but are coded explicitely, because there is a strong
+// disagreement among Windows, MAC OS and Linux how to name them.
 
-   for (i=0 ; i <= strlen(s1) ; ++i) h1[i] = tolower(s1[i]);
-   for (i=0 ; i <= strlen(s2) ; ++i) h2[i] = tolower(s2[i]);
-
-   r = strstr(h1,h2);
-   if (r)
-   {
-      i = r - h1;
-      r += i;
-   }
-   return r;
-}
+// **********
+// Strcasecmp
+// **********
 
 int Strcasecmp(const char *s1, const char *s2)
 {
-   char h1[256];
-   char h2[256];
-   unsigned int i;
-
-   for (i=0 ; i <= strlen(s1) ; ++i) h1[i] = tolower(s1[i]);
-   for (i=0 ; i <= strlen(s2) ; ++i) h2[i] = tolower(s2[i]);
-
-   return strcmp(h1,h2);
+   for (size_t i=0 ; i <= strlen(s1) && i <= strlen(s2) ; ++i)
+   {
+      if (tolower(s1[i]) > tolower(s2[i])) return  1;
+      if (tolower(s1[i]) < tolower(s2[i])) return -1;
+   }
+   return 0;
 }
 
-int Strncasecmp(const char *s1, const char *s2, int n)
+// ***********
+// Strncasecmp
+// ***********
+
+int Strncasecmp(const char *s1, const char *s2, size_t n)
 {
-   char h1[256];
-   char h2[256];
-   unsigned int i;
-
-   for (i=0 ; i <= strlen(s1) ; ++i) h1[i] = tolower(s1[i]);
-   for (i=0 ; i <= strlen(s2) ; ++i) h2[i] = tolower(s2[i]);
-
-   return strncmp(h1,h2,n);
+   for (size_t i=0 ; i <= strlen(s1) && i <= strlen(s2) && i < n; ++i)
+   {
+      if (tolower(s1[i]) > tolower(s2[i])) return  1;
+      if (tolower(s1[i]) < tolower(s2[i])) return -1;
+   }
+   return 0;
 }
 
-void *AssertAlloc(void *p)
+// **********
+// Strcasestr
+// **********
+
+char *Strcasestr(const char *haystack, const char *needle)
 {
-   if (p != NULL) return p;
-   fprintf(stderr, "Allocation of memory failed.\n");
-   exit(1);
+   size_t hlen = strlen(haystack);
+   size_t nlen = strlen(needle);
+
+   if (!nlen) return (char *)haystack;
+   if (hlen < nlen) return NULL;
+   for (size_t i=0 ; i <= hlen-nlen ; ++i)
+   {
+      if (!Strncasecmp(haystack+i,needle,nlen)) return (char *)(haystack+i);
+   }
+   return NULL;
 }
+
+// ***********
+// MallocOrDie
+// ***********
 
 void *MallocOrDie(size_t size)
 {
-   return AssertAlloc(malloc(size));
+   void *ptr = malloc(size);
+   if (ptr) return ptr;
+   fprintf(stderr,"Allocation of memory failed with size = %lu\n",size);
+   exit(1);
 }
 
-void *ReallocOrDie(void *p, size_t size)
+// ************
+// ReallocOrDie
+// ************
+
+void *ReallocOrDie(void *ptr, size_t size)
 {
-   return AssertAlloc(realloc(p, size));
+   ptr = realloc(ptr,size);
+   if (ptr) return ptr;
+   fprintf(stderr,"Reallocation of memory failed with size = %lu\n",size);
+   exit(1);
 }
+
+// ****************************
+// CPU types of the 6502 family
+// ****************************
 
 enum CPU_Enum
 {
@@ -252,10 +270,6 @@ enum CPU_Enum
    CPU_65C02  , // Apple IIc, Apple IIe
    CPU_65802  ,
    CPU_65816  , // Apple IIgs
-   CPU_8080   ,
-   CPU_Z80    , // Epson QX-10, Microprofessor, Commodore 128
-   CPU_6809   , // Thomson
-   CPU_6309   ,
    CPU_End      // End marker
 };
 
@@ -267,11 +281,7 @@ const char *CPU_Name[] =
    "65SC02" , // Apple IIc
    "65C02"  , // Apple IIc, Apple IIe
    "65802"  ,
-   "65816"  , // Apple IIgs
-   "8080"   ,
-   "Z80"    , // Epson QX-10, Microprofessor, Commodore 128
-   "6809"   , // Thomson
-   "6309"
+   "65816"    // Apple IIgs, C256 Foenix
 };
 
 enum Addressing_Mode
@@ -354,148 +364,6 @@ struct AM_Inherent_Struct AM_Inherent_6502[] =
    {"---" ,   -1}
 };
 
-struct AM_Inherent_Struct AM_Inherent_6809[] =
-{
-   // 6309
-
-   {"SEXW"  ,  0x14},
-   {"PSHSW" ,0x1038},
-   {"PULSW" ,0x1039},
-   {"PSHUW" ,0x103A},
-   {"PULUW" ,0x103B},
-   {"NEGD"  ,0x1040},
-   {"COMD"  ,0x1043},
-   {"LSRD"  ,0x1044},
-   {"RORD"  ,0x1046},
-   {"ASRD"  ,0x1047},
-   {"ASLD"  ,0x1048},
-   {"LSLD"  ,0x1048},
-   {"ROLD"  ,0x1049},
-   {"DECD"  ,0x104A},
-   {"INCD"  ,0x104C},
-   {"TSTD"  ,0x104D},
-   {"CLRD"  ,0x104F},
-   {"COMW"  ,0x1053},
-   {"LSRW"  ,0x1054},
-   {"RORW"  ,0x1056},
-   {"ROLW"  ,0x1059},
-   {"DECW"  ,0x105A},
-   {"INCW"  ,0x105C},
-   {"TSTW"  ,0x105D},
-   {"CLRW"  ,0x105F},
-   {"COME"  ,0x1143},
-   {"DECE"  ,0x114A},
-   {"INCE"  ,0x114C},
-   {"TSTE"  ,0x114D},
-   {"CLRE"  ,0x114F},
-   {"COMF"  ,0x1153},
-   {"DECF"  ,0x115A},
-   {"INCF"  ,0x115C},
-   {"TSTF"  ,0x115D},
-   {"CLRF"  ,0x115F},
-
-   // 6809
-
-   {"NOP"   ,  0x12}, // index 35
-   {"SYNC"  ,  0x13},
-   {"DAA"   ,  0x19},
-   {"SEX"   ,  0x1D},
-   {"RTS"   ,  0x39},
-   {"ABX"   ,  0x3A},
-   {"RTI"   ,  0x3B},
-   {"MUL"   ,  0x3D},
-   {"RESET" ,  0x3E},
-   {"SWI"   ,  0x3F},
-   {"NEGA"  ,  0x40},
-   {"COMA"  ,  0x43},
-   {"LSRA"  ,  0x44},
-   {"RORA"  ,  0x46},
-   {"ASRA"  ,  0x47},
-   {"ASLA"  ,  0x48},
-   {"LSLA"  ,  0x48},
-   {"ROLA"  ,  0x49},
-   {"DECA"  ,  0x4A},
-   {"INCA"  ,  0x4C},
-   {"TSTA"  ,  0x4D},
-   {"CLRA"  ,  0x4F},
-   {"NEGB"  ,  0x50},
-   {"COMB"  ,  0x53},
-   {"LSRB"  ,  0x54},
-   {"RORB"  ,  0x56},
-   {"ASRB"  ,  0x57},
-   {"ASLB"  ,  0x58},
-   {"LSLB"  ,  0x58},
-   {"ROLB"  ,  0x59},
-   {"DECB"  ,  0x5A},
-   {"INCB"  ,  0x5C},
-   {"TSTB"  ,  0x5D},
-   {"CLRB"  ,  0x5F},
-   {"SWI2"  ,0x103F},
-   {"SWI3"  ,0x113F},
-   {"----"  ,    -1}
-};
-
-struct AM_Inherent_Struct AM_Inherent_8080[] =
-{
-   {"NOP"   ,  0x00},
-   {"RLC"   ,  0x07},
-   {"RRC"   ,  0x0F},
-   {"RAL"   ,  0x17},
-   {"RAR"   ,  0x1F},
-   {"DAA"   ,  0x27},
-   {"CMA"   ,  0x2F},
-   {"STC"   ,  0x37},
-   {"CMC"   ,  0x3F},
-   {"HLT"   ,  0x76},
-   {"RET"   ,  0xC9},
-   {"XTHL"  ,  0xE3},
-   {"PCHL"  ,  0xE9},
-   {"XCHG"  ,  0xEB},
-   {"DI"    ,  0xF3},
-   {"SPHL"  ,  0xF9},
-   {"EI"    ,  0xFB},
-   {"----"  ,    -1}
-};
-
-struct AM_Inherent_Struct AM_Inherent_Z80[] =
-{
-   {"NOP"   ,  0x00},
-   {"RLCA"  ,  0x07},
-   {"RRCA"  ,  0x0F},
-   {"RLA"   ,  0x17},
-   {"RRA"   ,  0x1F},
-   {"DAA"   ,  0x27},
-   {"CPL"   ,  0x2F},
-   {"SCF"   ,  0x37},
-   {"CCF"   ,  0x3F},
-   {"HALT"  ,  0x76},
-   {"EXX"   ,  0xD9},
-   {"DI"    ,  0xF3},
-   {"EI"    ,  0xFB},
-   {"NEG"   ,0xED44},
-   {"RETN"  ,0xED45},
-   {"RETI"  ,0xED4D},
-   {"RRD"   ,0xED67},
-   {"RLD"   ,0xED6F},
-   {"LDI"   ,0xEDA0},
-   {"CPI"   ,0xEDA1},
-   {"INI"   ,0xEDA2},
-   {"OUTI"  ,0xEDA3},
-   {"LDD"   ,0xEDA8},
-   {"CPD"   ,0xEDA9},
-   {"IND"   ,0xEDAA},
-   {"OUTD"  ,0xEDAB},
-   {"LDIR"  ,0xEDB0},
-   {"CPIR"  ,0xEDB1},
-   {"INIR"  ,0xEDB2},
-   {"OTIR"  ,0xEDB3},
-   {"LDDR"  ,0xEDB8},
-   {"CPDR"  ,0xEDB9},
-   {"INDR"  ,0xEDBA},
-   {"OTDR"  ,0xEDBB},
-   {"----"  ,    -1}
-};
-
 struct AM_Register_Struct
 {
    const char *Mnemonic;
@@ -522,81 +390,6 @@ struct AM_Register_Struct AM_Register_6502[] =
 };
 
 
-// Two register operands or list of registers for push/pull
-
-struct AM_Register_Struct AM_Register_6809[] =
-{
-   // 6309
-
-   {"ADDR"  ,0x1030},
-   {"ADCR"  ,0x1031},
-   {"SUBR"  ,0x1032},
-   {"SBCR"  ,0x1033},
-   {"ANDR"  ,0x1034},
-   {"ORR"   ,0x1035},
-   {"EORR"  ,0x1036},
-   {"CMPR"  ,0x1037},
-
-   // 6809
-
-   {"EXG"   ,  0x1E}, // index 8
-   {"TFR"   ,  0x1F},
-   {"PSHS"  ,  0x34},
-   {"PULS"  ,  0x35},
-   {"PSHU"  ,  0x36},
-   {"PULU"  ,  0x37},
-   {"----"  ,    -1}
-};
-
-struct AM_Register_Struct AM_Register_8080[] =
-{
-   {"STAX"  ,  0x02}, // B,D
-   {"INX"   ,  0x03}, // B,D,H,SP
-   {"INR"   ,  0x04}, // all
-   {"DCR"   ,  0x05}, // all
-   {"DAD"   ,  0x09}, // B,D,H,SP
-   {"LDAX"  ,  0x0A}, // B,D
-   {"DCX"   ,  0x0B}, // B,D,H,SP
-   {"MOV"   ,  0x40}, // r8,r8
-   {"ADD"   ,  0x80}, // all
-   {"ADC"   ,  0x88}, // all
-   {"SUB"   ,  0x90}, // all
-   {"SBB"   ,  0x98}, // all
-   {"ANA"   ,  0xA0}, // all
-   {"XRA"   ,  0xA8}, // all
-   {"ORA"   ,  0xB0}, // all
-   {"CMP"   ,  0xB8}, // all
-   {"POP"   ,  0xC1}, // B,D,H,PSW
-   {"PUSH"  ,  0xC5}, // B,D,H,PSW
-   {"----"  ,    -1}
-};
-
-struct AM_Register_Struct AM_Register_Z80[] =
-{
-   {"INC"   ,  0x03}, // all
-   {"DEC"   ,  0x05}, // all
-   {"ADD"   ,  0x09}, // r16,r16
-   {"LD"    ,  0x40}, // r8,r8
-   {"ADC"   ,  0x88}, // all
-   {"SUB"   ,  0x90}, // all
-   {"SBC"   ,  0x98}, // all
-   {"AND"   ,  0xA0}, // all
-   {"XOR"   ,  0xA8}, // all
-   {"OR"    ,  0xB0}, // all
-   {"CP"    ,  0xB8}, // all
-   {"POP"   ,  0xC1}, // BC,DE,HL,AF
-   {"PUSH"  ,  0xC5}, // BC,DE,HL,AF
-   {"RLC"   ,0xCB00}, // r8
-   {"RRC"   ,0xCB08}, // r8
-   {"RL"    ,0xCB10}, // r8
-   {"RR"    ,0xCB18}, // r8
-   {"SLA"   ,0xCB20}, // r8
-   {"SRA"   ,0xCB28}, // r8
-   {"SLL"   ,0xCB30}, // r8
-   {"SRL"   ,0xCB38}, // r8
-   {"----"  ,    -1}
-};
-
 struct CPU_Property_Struct
 {
    struct AM_Inherent_Struct *AM_Inherent_Tab; // mnemonic table
@@ -610,11 +403,7 @@ struct CPU_Property_Struct CPU_Property_Tab[] =
    {AM_Inherent_6502 + 16, AM_Register_6502    , 0}, // 65SC02
    {AM_Inherent_6502 + 16, AM_Register_6502    , 0}, // 65C02
    {AM_Inherent_6502     , AM_Register_6502    , 0}, // 65802
-   {AM_Inherent_6502     , AM_Register_6502    , 0}, // 65816
-   {AM_Inherent_8080     , AM_Register_8080    , 0}, // 8080
-   {AM_Inherent_Z80      , AM_Register_Z80     , 1}, // Z80
-   {AM_Inherent_6809 + 35, AM_Register_6809 + 8, 1}, // 6809
-   {AM_Inherent_6809     , AM_Register_6809    , 1}  // 6309
+   {AM_Inherent_6502     , AM_Register_6502    , 0}  // 65816
 };
 
 struct AM_Inherent_Struct *AM_Inherent_Tab = AM_Inherent_6502 + 22; // 6502
@@ -623,26 +412,6 @@ struct AM_Register_Struct *AM_Register_Tab = AM_Register_6502 +  2; // 6502
 const char *Register_Operands_6502[] =
 {
    "A"
-};
-
-const char *Register_Operands_8080[] =
-{
-   "AF","BC","DE","HL","SP","A","B","C","D","E","H","L"
-};
-
-const char *Register_Operands_Z80[] =
-{
-   "AF","BC","DE","HL","SP","A","B","C","D","E","H","L","IX","IY"
-};
-
-const char *Register_Operands_6809[] =
-{
-   "A","B","D","X","Y","U","S","PC","DP","CC"
-};
-
-const char *Register_Operands_6309[] =
-{
-   "A","B","D","E","F","V","W","O","Q","X","Y","U","S","PC","DP","CC","MD"
 };
 
 enum AddressType {
@@ -978,23 +747,24 @@ struct cpu_struct set[256] =
 
 #define UNDEF 0xff0000
 
-int SkipHex = 0;    // Switch on with -x
-int Debug = 0;      // Switch on with -d
-int LiNo  = 0;      // Line number of current file
-int WithLiNo = 0;   // Print line numbers in listing if set
-int TotalLiNo  = 0; // Total line number
-int Preprocess = 0; // Print preprocessed source file <file.pp>
+int SkipHex;        // Switch on with -x
+int Debug;          // Switch on with -d
+int LiNo;           // Line number of current file
+int WithLiNo;       // Print line numbers in listing if set
+int TotalLiNo;      // Total line number (with include files)
+int Preprocess;     // Print preprocessed source file <file.pp>
+int ErrNum;         // Error counter
+int WriteLA;        // Write Load Address (CBM)
+int Petscii;        // Use PETSCII encoding
+int MacroStopped;   // Macro end flag
+int InsideMacro;    // Macro nesting level
+int CurrentMacro;   // Macro index
+int ModuleStart;    // Address of a module
+int ModuleTrigger;  // Start of module
+int WordOC;         // List 2 byte opcodes as word
+
 int ERRMAX = 10;    // Stop assemby after ERRMAX errors
-int ErrNum;
 int LoadAddress = UNDEF;
-int WriteLoadAddress = 0;
-int Petscii = 0;
-int MacroStopped;
-int InsideMacro;
-int CurrentMacro;
-int ModuleStart;       // Address of a module
-int ModuleTrigger;     // Start of module
-int WordOC;            // List 2 byte opcodes as word
 char *MacroPointer;
 
 const char *Mne;       // Current mnemonic
@@ -1038,7 +808,7 @@ int StoreCount = 0;
 // overflows are detected after using the new value.
 // So references to pc + n do no harm if pc is near the boundary
 
-unsigned char ROM[0x10100]; // binary
+unsigned char ROM[0x10100]; // binary 64K plus 1 page
 
 
 FILE *sf;
@@ -1098,18 +868,28 @@ struct MacroStruct
 
 int Macros;
 
+// *********
+// SkipSpace
+// *********
 
 char *SkipSpace(char *p)
 {
-   if (*p) while (isspace(*p)) ++p;
+   if (p) while (isspace(*p)) ++p;
    return p;
 }
+
+// ****
+// isym
+// ****
 
 int isym(char c)
 {
    return (c == '_' || isalnum(c));
 }
 
+// *********
+// GetSymbol
+// *********
 
 char *GetSymbol(char *p, char *s)
 {
@@ -1350,7 +1130,7 @@ char *SetPC(char *p)
    p = EvalOperand(p+1,&v,0);
    if (df) fprintf(df,"PC = %4.4x\n",v);
    pc = v;
-   if (LoadAddress < 0) LoadAddress = pc;
+   if (LoadAddress == UNDEF) LoadAddress = pc;
    PrintPCLine();
    if (GenStart > pc) GenStart = pc; // remember lowest pc value
    return p;
@@ -2402,7 +2182,7 @@ char *IsData(char *p)
    else if (!Strncasecmp(p,"CPU",3))     p = ParseCPUData(p+3);
    else if (!Strncasecmp(p,"CASE",4))    p = ParseCaseData(p+4);
    else if (!Strncasecmp(p,"ORG",3))     p = SetPC(p);
-   else if (!Strncasecmp(p,"LOAD",4))    WriteLoadAddress = 1;
+   else if (!Strncasecmp(p,"LOAD",4))    WriteLA = 1;
    else if (!Strncasecmp(p,"INCLUDE",7)) p = IncludeFile(p+7);
    else if (!Strncasecmp(p,"SIZE",4))    ListSizeInfo();
    else if (!Strncasecmp(p,"SKI",3))     p += strlen(p);
@@ -3022,7 +2802,7 @@ void NextMacLine(char *w)
    {
       while (*MacroPointer && *MacroPointer != '\n')
       {
-         if (*MacroPointer == '&')
+         if (*MacroPointer == '&' && isdigit(MacroPointer[1]))
          {
             i = *(++MacroPointer) - '0';
             r = MacArgs + ArgPtr[i];
@@ -3341,7 +3121,7 @@ void WriteBinaries(void)
       if (df) fprintf(df,"Storing $%4.4x - $%4.4x <%s>\n",
                       SFA[i],SFA[i]+SFL[i],SFF[i]);
       bf = fopen(SFF[i],"wb");
-      if (WriteLoadAddress)
+      if (WriteLA)
       {
          lo = SFA[i] & 0xff;
          hi = SFA[i]  >>  8;
@@ -3417,7 +3197,7 @@ int main(int argc, char *argv[])
 
    printf("\n");
    printf("*******************************************\n");
-   printf("* Bit Shift Assembler 25-Jun-2018         *\n");
+   printf("* Bit Shift Assembler 24-May-2020         *\n");
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
