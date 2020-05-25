@@ -4,7 +4,7 @@
 Bit Shift Assembler
 *******************
 
-Version: 24-May-2020
+Version: 25-May-2020
 
 The assembler was developed and tested on an iMAC with OSX Mavericks.
 Using no specific options of the host system, it should run on any
@@ -1418,48 +1418,59 @@ char *ParseRealData(char *p)
    unsigned int v;
    int i,mansize;
    int Sign,Exponent;
+   double d;
 
-   union udb
-   {
-     double d;
-     unsigned char b[8];
-   } db;
-
-   mansize = 4; // default mantissa size
-
-   if (*p == '4')
+   mansize = 4;   // default mantissa size is 4
+   if (*p == '4') // REAL4 sets mantissa size to 3
    {
       mansize = 3;
       ++p;
    }
    p = SkipSpace(p);
+   memset(Operand,0,sizeof(Operand));
 
-   for (i=0 ; i < 8 ; ++i) Operand[i] = 0;
-
-   if (*p == '$')
+   if (*p == '$') // hex notation
    {
       ++p;
-      for (i=0 ; i < 5 ; ++i, p+=2)
+      for (i=0 ; i <= mansize ; ++i, p+=2)
       {
-          if (!isxdigit(*p)) break;
+          if (!isxdigit(*p) || !isxdigit(*(p+1))) break;
           sscanf(p,"%2x",&v);
           Operand[i] = v;
       }
    }
    else
    {
-      db.d = atof(p);
-      Sign = db.b[7] & 0x80;
-      Exponent = (((db.b[7] & 0x7f) << 4) | (db.b[6] >> 4)) - 0x3ff + 0x81;
+      d = strtod(p,NULL);
+      if (d != 0)
+      {
+         Sign = 0;
+         if (d < 0)
+         {
+            Sign = 0x80;
+            d = -d;
+         }
+         d = frexp(d,&Exponent);
+         Exponent += 0x80;
+         if (Exponent < 1 || Exponent > 255)
+         {
+            ErrorMsg("Exponent %d out of range\n",Exponent);
+            ++ErrNum;
+            return p+strlen(p);;
+         }
+         Operand[0] = Exponent;
+         d *= 256;
+         v = d;
+         Operand[1] = (v & 127) | Sign;
+         d -= v;
 
-      Operand[0] = Exponent;
-      Operand[1] = ((db.b[6] & 0x0f) << 3) | (db.b[5] >> 5) | Sign;
-      Operand[2] = ((db.b[5] & 0x1f) << 3) | (db.b[4] >> 5);
-      Operand[3] = ((db.b[4] & 0x1f) << 3) | (db.b[3] >> 5);
-      Operand[4] = ((db.b[3] & 0x1f) << 3) | (db.b[2] >> 5);
-      Operand[5] = ((db.b[2] & 0x1f) << 3) | (db.b[1] >> 5);
-
-      if (db.d == 0.0) for (i=0 ; i < 8 ; ++i) Operand[i] = 0;
+         for (i=2 ; i < 6 ; ++i)
+         {
+            d *= 256;
+            Operand[i] = v = d;
+            d -= v;
+         }
+      }
    }
 
    // Round
@@ -3185,7 +3196,7 @@ int main(int argc, char *argv[])
 
    printf("\n");
    printf("*******************************************\n");
-   printf("* Bit Shift Assembler 24-May-2020         *\n");
+   printf("* Bit Shift Assembler 25-May-2020         *\n");
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
