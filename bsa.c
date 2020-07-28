@@ -4,9 +4,9 @@
 Bit Shift Assembler
 *******************
 
-Version: 25-May-2020
+Version: 28-Jul-2020
 
-The assembler was developed and tested on an iMAC with OSX Mavericks.
+The assembler was developed and tested on a MAC with OS Catalina.
 Using no specific options of the host system, it should run on any
 computer with a standard C-compiler, e.g. Linux, Windows, Amiga OS, etc.
 
@@ -48,6 +48,7 @@ JMP Lab_10 and JMP LAB_10  jump to different targets!
 
 Examples of pseudo opcodes (directives):
 ========================================
+.CPU  45GS02                   set target CPU (6502,65C02,45GS02)
 .ORG  $E000                    set program counter
   * = $E000                    set program counter
 .LOAD $0401                    precede binary with a CBM load address
@@ -185,6 +186,282 @@ For more examples see the complete operating system for C64 and VC20
 #include <math.h>
 #include <ctype.h>
 
+// ****************************
+// CPU types of the 6502 family
+// ****************************
+
+#define CPU_6502    1
+#define CPU_65SC02  2
+#define CPU_65C02   4
+#define CPU_45GS02  8
+#define CPU_65816  16
+
+#define C45 0xf7
+#define C16 0xef
+
+#define CPU_NAMES 5
+char *CPU_Names[CPU_NAMES] =
+{
+   "6502"   , // Commodore, Atari, Apple, Acorn BBC
+   "65SC02" , // Apple IIc
+   "65C02"  , // Apple IIc, Apple IIe
+   "45GS02" , // Commodore C65, MEGA65
+   "65816"    // Apple IIgs, C256 Foenix
+};
+
+int   CPU_Type;
+char *CPU_Name;
+
+#define AM_None -1
+#define AM_Dpag  0
+#define AM_Abso  1
+#define AM_Dpgx  2
+#define AM_Absx  3
+#define AM_Indx  4
+#define AM_Imme  5
+#define AM_Indy  6
+#define AM_Absy  7
+#define AM_Indz  8
+#define AM_Rela  9
+#define AM_Bits 10
+#define AM_Impl 11
+
+
+// ***********************************
+// Mnemonics with implied address mode
+// ***********************************
+
+struct ImpStruct
+{
+   char Mne[4];       // Mnemonic
+   int  CPU;          // CPU type
+   int  Opc;          // Opcodes
+} Imp[] =
+{
+   {"BRK",0,0x00},
+   {"PHP",0,0x08},
+   {"ASL",0,0x0a}, // ASL A
+   {"CLC",0,0x18},
+   {"PLP",0,0x28},
+   {"ROL",0,0x2a}, // ROL A
+   {"BIT",0,0x2c}, // SKIP 2 byte
+   {"SEC",0,0x38},
+   {"RTI",0,0x40},
+   {"PHA",0,0x48},
+   {"LSR",0,0x4a}, // LSR A
+   {"CLI",0,0x58},
+   {"RTS",0,0x60},
+   {"PLA",0,0x68},
+   {"ROR",0,0x6a}, // ROR A
+   {"SEI",0,0x78},
+   {"DEY",0,0x88},
+   {"TXA",0,0x8a},
+   {"TYA",0,0x98},
+   {"TXS",0,0x9a},
+   {"TAY",0,0xa8},
+   {"TAX",0,0xaa},
+   {"CLV",0,0xb8},
+   {"TSX",0,0xba},
+   {"INY",0,0xc8},
+   {"DEX",0,0xca},
+   {"CLD",0,0xd8},
+   {"INX",0,0xe8},
+   {"NOP",0,0xea},
+   {"SED",0,0xf8},
+
+   // not for 6502
+
+   {"INA",1,0x1a}, // INC A
+   {"INC",1,0x1a}, // INC A
+   {"DEA",1,0x3a}, // DEC A
+   {"DEC",1,0x3a}, // DEC A
+   {"PHY",1,0x5a},
+   {"PLY",1,0x7a},
+   {"PHX",1,0xda},
+   {"PLX",1,0xfa},
+
+   // 45GS02 only
+
+   {"CLE",C45,0x02},
+   {"SEE",C45,0x03},
+   {"TSY",C45,0x0b},
+   {"INZ",C45,0x1b},
+   {"TYS",C45,0x2b},
+   {"DEZ",C45,0x3b},
+   {"NEG",C45,0x42}, // NEG A
+   {"TAZ",C45,0x4b},
+   {"TAB",C45,0x5b},
+   {"AUG",C45,0x5c},
+   {"TZA",C45,0x6b},
+   {"TBA",C45,0x7b},
+   {"PHZ",C45,0xdb},
+   {"PLZ",C45,0xfb},
+
+   // 65802 & 65816
+
+   {"PHD",C16,0x0b},
+   {"TCS",C16,0x1b},
+   {"PLD",C16,0x2b},
+   {"TSA",C16,0x3b},
+   {"TSC",C16,0x3b},
+   {"WDM",C16,0x42},
+   {"MVP",C16,0x44},
+   {"PHK",C16,0x4b},
+   {"MVN",C16,0x54},
+   {"TCD",C16,0x5b},
+   {"RTL",C16,0x6b},
+   {"TDC",C16,0x7b},
+   {"PHB",C16,0x8b},
+   {"PLB",C16,0xab},
+   {"TYX",C16,0xbb},
+   {"WAI",C16,0xcb},
+   {"STP",C16,0xdb},
+   {"SWA",C16,0xeb},
+   {"XBA",C16,0xeb},
+   {"XCE",C16,0xfb},
+};
+
+#define IMPS (sizeof(Imp) / sizeof(struct ImpStruct))
+
+struct RelStruct
+{
+   char Mne[4];       // Mnemonic
+   int  CPU;          // CPU type
+   int  Opc;          // Opcodes
+} Rel[] =
+{
+   {"BPL",0,0x10},
+   {"BMI",0,0x30},
+   {"BVC",0,0x50},
+   {"BVS",0,0x70},
+   {"BCC",0,0x90},
+   {"BCS",0,0xb0},
+   {"BNE",0,0xd0},
+   {"BEQ",0,0xf0},
+
+   // not for 6502
+
+   {"BRA",1,0x80},
+   {"BRU",1,0x80},
+   {"BSR",1,0x63}
+};
+
+#define RELS (sizeof(Rel) / sizeof(struct RelStruct))
+
+struct BitStruct
+{
+   char Mne[4];       // Mnemonic
+   int  CPU;          // CPU type
+   int  Opc;          // Opcodes
+} Bit[] =
+{
+   {"RMB",C45,0x07},
+   {"SMB",C45,0x87},
+   {"BBR",C45,0x0f},
+   {"BBS",C45,0x8f}
+};
+
+#define BITS (sizeof(Bit) / sizeof(struct BitStruct))
+
+int GenIndex;
+int JMPIndex;
+int JSRIndex;
+int BITIndex;
+int STYIndex;
+int PHWIndex;
+
+struct GenStruct
+{
+   char Mne[4];       // Mnemonic
+   int  CPU;          // CPU type
+   int  Opc[9];       // Opcodes
+} Gen[] =
+{
+   //             0    1    2    3    4    5    6    7    8
+   //     CPU    DP  Abs DP,X Ab,X (,X)    # (),Y Ab,Y (),Z
+   // -----------------------------------------------------
+   {"ORA",  0,{0x05,0x0d,0x15,0x1d,0x01,0x09,0x11,0x19,0x12}}, //  0
+   {"AND",  0,{0x25,0x2d,0x35,0x3d,0x21,0x29,0x31,0x39,0x32}}, //  1
+   {"EOR",  0,{0x45,0x4d,0x55,0x5d,0x41,0x49,0x51,0x59,0x52}}, //  2
+   {"ADC",  0,{0x65,0x6d,0x75,0x7d,0x61,0x69,0x71,0x79,0x72}}, //  3
+   {"STA",  0,{0x85,0x8d,0x95,0x9d,0x81,  -1,0x91,0x99,0x92}}, //  4
+   {"LDA",  0,{0xa5,0xad,0xb5,0xbd,0xa1,0xa9,0xb1,0xb9,0xb2}}, //  5
+   {"CMP",  0,{0xc5,0xcd,0xd5,0xdd,0xc1,0xc9,0xd1,0xd9,0xd2}}, //  6
+   {"SBC",  0,{0xe5,0xed,0xf5,0xfd,0xe1,0xe9,0xf1,0xf9,0xf2}}, //  7
+
+   {"ASL",  0,{0x06,0x0e,0x16,0x1e,  -1,  -1,  -1,  -1,  -1}}, //  8
+   {"ROL",  0,{0x26,0x2e,0x36,0x3e,  -1,  -1,  -1,  -1,  -1}}, //  9
+   {"LSR",  0,{0x46,0x4e,0x56,0x5e,  -1,  -1,  -1,  -1,  -1}}, // 10
+   {"ROR",  0,{0x66,0x6e,0x76,0x7e,  -1,  -1,  -1,  -1,  -1}}, // 11
+   {"DEC",  0,{0xc6,0xce,0xd6,0xde,  -1,  -1,  -1,  -1,  -1}}, // 12
+   {"INC",  0,{0xe6,0xee,0xf6,0xfe,  -1,  -1,  -1,  -1,  -1}}, // 13
+
+   {"BIT",  0,{0x24,0x2c,0x34,0x3c,  -1,0x89,  -1,  -1,  -1}}, // 14
+   {"JMP",  0,{  -1,0x4c,  -1,  -1,0x7c,  -1,  -1,  -1,0x6c}}, // 15
+   {"JSR",  0,{  -1,0x20,  -1,  -1,0x23,  -1,  -1,  -1,0x22}}, // 16
+
+   {"CPX",  0,{0xe4,0xec,  -1,  -1,  -1,0xe0,  -1,  -1,  -1}}, // 17
+   {"CPY",  0,{0xc4,0xcc,  -1,  -1,  -1,0xc0,  -1,  -1,  -1}}, // 18
+   {"LDX",  0,{0xa6,0xae,  -1,  -1,  -1,0xa2,  -1,0xbe,  -1}}, // 19
+   {"LDY",  0,{0xa4,0xac,0xb4,0xbc,  -1,0xa0,  -1,  -1,  -1}}, // 20
+   {"STX",  0,{0x86,0x8e,  -1,  -1,  -1,  -1,  -1,0x9b,  -1}}, // 21
+   {"STY",  0,{0x84,0x8c,0x94,0x8b,  -1,  -1,  -1,  -1,  -1}}, // 22
+
+   {"STZ",  1,{0x64,0x9c,0x74,0x9e,  -1,  -1,  -1,  -1,  -1}}, // 23
+   {"CPZ",C45,{0xd4,0xdc,  -1,  -1,  -1,0xc2,  -1,  -1,  -1}}, // 24
+   {"LDZ",C45,{  -1,0xab,  -1,0xbb,  -1,0xa3,  -1,  -1,  -1}}, // 25
+
+   {"ASW",C45,{  -1,0xcb,  -1,  -1,  -1,  -1,  -1,  -1,  -1}}, // 26
+   {"ROW",C45,{  -1,0xeb,  -1,  -1,  -1,  -1,  -1,  -1,  -1}}, // 27
+   {"DEW",C45,{0xc3,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1}}, // 28
+   {"INW",C45,{0xe3,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1}}, // 29
+   {"PHW",C45,{  -1,0xfc,  -1,  -1,  -1,0xf4,  -1,  -1,  -1}}  // 30
+ };
+
+
+#define GENS (sizeof(Gen) / sizeof(struct GenStruct))
+
+struct IndStruct
+{
+   char Mne[4];       // Mnemonic
+   int  CPU;          // CPU type
+   int  Opc;          // Opcodes
+} Ind[] =
+{
+// 6502
+   {"JMP",0,0x6c},
+// 65SC02
+   {"ORA",1,0x12},
+   {"AND",1,0x32},
+   {"EOR",1,0x52},
+   {"ADC",1,0x72},
+   {"STA",1,0x92},
+   {"LDA",1,0xb2},
+   {"CMP",1,0xd2},
+   {"SBC",1,0xf2}
+};
+
+#define DIMOP_6502  139
+#define DIMOP_65C02 (sizeof(Mat) / sizeof(struct MatStruct))
+
+int DimOp = DIMOP_6502;
+
+// ********
+// GetIndex
+// ********
+
+unsigned int GetIndex(char *mne)
+{
+   unsigned int i;
+
+   for (i=0 ; i < GENS ; ++i)
+   {
+      if (!strcmp(Gen[i].Mne,mne)) return i;
+   }
+   fprintf(stderr,"\n*** internal error in GetIndex(%s) ***\n",mne);
+   exit(1);
+}
+
 // The following string routines are not called from a library
 // but are coded explicitely, because there is a strong
 // disagreement among Windows, MAC OS and Linux how to name them.
@@ -259,491 +536,7 @@ void *ReallocOrDie(void *ptr, size_t size)
    exit(1);
 }
 
-// ****************************
-// CPU types of the 6502 family
-// ****************************
 
-enum CPU_Enum
-{
-   CPU_6502   , // Commodore, Atari, Apple
-   CPU_65SC02 , // Apple IIc
-   CPU_65C02  , // Apple IIc, Apple IIe
-   CPU_65802  ,
-   CPU_65816  , // Apple IIgs
-   CPU_End      // End marker
-};
-
-int CPU_Type = CPU_6502; // default
-
-const char *CPU_Name[] =
-{
-   "6502"   , // Commodore, Atari, Apple
-   "65SC02" , // Apple IIc
-   "65C02"  , // Apple IIc, Apple IIe
-   "65802"  ,
-   "65816"    // Apple IIgs, C256 Foenix
-};
-
-enum Addressing_Mode
-{
-   AM_None        , // Invalid
-   AM_Inherent    , // Implied for 65xx family
-   AM_Register    , // Accumulator for 65xx
-   AM_Immediate   ,
-   AM_Branch      ,
-   AM_Direct      , // Zero page for 65xx
-   AM_Extended    , // Absolute for 65xx
-   AM_Indexed     ,
-   AM_Indirect
-
-};
-
-struct AM_Inherent_Struct
-{
-   const char *Mnemonic;
-   int         Opcode;
-};
-
-struct AM_Inherent_Struct AM_Inherent_6502[] =
-{
-   // 65816 & 65802
-
-   {"PHD" , 0x0b},
-   {"TCS" , 0x1b},
-   {"PLD" , 0x2b},
-   {"TSC" , 0x3b},
-   {"PHK" , 0x4b},
-   {"TCD" , 0x5b},
-   {"RTL" , 0x6b},
-   {"TDC" , 0x7b},
-   {"PHB" , 0x8b},
-   {"TXY" , 0x9b},
-   {"PLB" , 0xab},
-   {"TYX" , 0xbb},
-   {"WAI" , 0xcb},
-   {"STP" , 0xdb},
-   {"XBA" , 0xeb},
-   {"XCE" , 0xfb},
-
-   // 65C02 & 65SC02: index 16
-
-   {"INA" , 0x1a}, // also INC A
-   {"DEA" , 0x3a}, // also DEC A
-   {"PHY" , 0x5a},
-   {"PLY" , 0x7a},
-   {"PHX" , 0xda},
-   {"PLX" , 0xfa},
-
-   // 6502: index 22
-
-   {"BRK" , 0x00},
-   {"PHP" , 0x08},
-   {"CLC" , 0x18},
-   {"PLP" , 0x28},
-   {"SEC" , 0x38},
-   {"RTI" , 0x40},
-   {"PHA" , 0x48},
-   {"CLI" , 0x58},
-   {"RTS" , 0x60},
-   {"PLA" , 0x68},
-   {"SEI" , 0x78},
-   {"DEY" , 0x88},
-   {"TXA" , 0x8a},
-   {"TYA" , 0x98},
-   {"TXS" , 0x9a},
-   {"TAY" , 0xa8},
-   {"TAX" , 0xaa},
-   {"CLV" , 0xb8},
-   {"TSX" , 0xba},
-   {"INY" , 0xc8},
-   {"DEX" , 0xca},
-   {"CLD" , 0xd8},
-   {"INX" , 0xe8},
-   {"NOP" , 0xea},
-   {"SED" , 0xf8},
-   {"---" ,   -1}
-};
-
-struct AM_Register_Struct
-{
-   const char *Mnemonic;
-   int         Opcode;
-};
-
-
-// Operand is only the acculumator "A"
-
-struct AM_Register_Struct AM_Register_6502[] =
-{
-   // 65816 & 65802 & 65C02 & 65SC02
-
-   {"INC" , 0x1a},
-   {"DEC" , 0x3a},
-
-   // 6502
-
-   {"ASL" , 0x0a}, // index 2
-   {"ROL" , 0x2a},
-   {"LSR" , 0x4a},
-   {"ROR" , 0x6a},
-   {"---" ,   -1}
-};
-
-
-struct CPU_Property_Struct
-{
-   struct AM_Inherent_Struct *AM_Inherent_Tab; // mnemonic table
-   struct AM_Register_Struct *AM_Register_Tab; // mnemonic table
-   int WordOC;                           // two byte opcodes
-};
-
-struct CPU_Property_Struct CPU_Property_Tab[] =
-{
-   {AM_Inherent_6502 + 22, AM_Register_6502 + 2, 0}, // 6502
-   {AM_Inherent_6502 + 16, AM_Register_6502    , 0}, // 65SC02
-   {AM_Inherent_6502 + 16, AM_Register_6502    , 0}, // 65C02
-   {AM_Inherent_6502     , AM_Register_6502    , 0}, // 65802
-   {AM_Inherent_6502     , AM_Register_6502    , 0}  // 65816
-};
-
-struct AM_Inherent_Struct *AM_Inherent_Tab = AM_Inherent_6502 + 22; // 6502
-struct AM_Register_Struct *AM_Register_Tab = AM_Register_6502 +  2; // 6502
-
-const char *Register_Operands_6502[] =
-{
-   "A"
-};
-
-enum AddressType {
-None,           // invalid
-Impl,Accu,      // 1 byte opcodes
-Rela,Imme,      // 2 byte opcodes
-Zpag,Zpgx,Zpgy, // 2 byte zero page modes
-Abso,Absx,Absy, // 3 byte absolute modes
-Indi,Indx,Indy, // 2 indirect modes
-Stac,Stay,      //   stack relative
-Indl,Lonx,Lony, //   indexed long
-Long            //   long
-};
-
-char Prefix[] = {
-' ',            // invalid
-' ','A',        // 1 byte opcodes
-' ','#',        // 2 byte opcodes
-' ',' ',' ',    // 2 byte zero page modes
-' ',' ',' ',    // 3 byte absolute modes
-'(','(','(',    //   indirect modes
-' ','(',        //   stack relative
-'[',' ','[',    //   indexed long
-' '             //   long
-};
-
-char *Suffix[] = {
-"",             // invalid
-"","",          // 1 byte opcodes
-"","",          // 2 byte opcodes
-"",",X",",Y",   // 2 byte zero page modes
-"",",X",",Y",   // 3 byte absolute modes
-")",",X)","),Y",//   indirect modes
-",S",",S),Y",   //   stack relative
-"]",",X","],Y", //   indexed long
-""              //   long
-};
-
-int Lenfix[] = {
-0,              // invalid
-1,1,            // 1 byte opcodes
-2,2,            // 2 byte opcodes
-2,2,2,          // 2 byte zero page modes
-3,3,3,          // 3 byte absolute modes
-2,2,2,          //   indirect modes
-2,2,            //   stack relative
-2,4,2,          //   indexed long
-4               //   long
-};
-
-
-struct cpu_struct
-{
-   int  cpu;     // 0 = 6502, 1 = 65c02, 2 = 65816
-   int  amo;
-   char mne[5];
-};
-
-struct cpu_struct set[256] =
-{
-   {0, Impl, "BRK" },   // 00
-   {0, Indx, "ORA" },   // 01
-   {2, Imme, "COP" },   // 02
-   {2, Stac, "ORA" },   // 03
-   {1, Zpag, "TSB" },   // 04
-   {0, Zpag, "ORA" },   // 05
-   {0, Zpag, "ASL" },   // 06
-   {3, Indl, "ORA" },   // 07  RMB0
-   {0, Impl, "PHP" },   // 08
-   {0, Imme, "ORA" },   // 09
-   {0, Accu, "ASL" },   // 0a
-   {2, Impl, "PHD" },   // 0b
-   {1, Abso, "TSB" },   // 0c
-   {0, Abso, "ORA" },   // 0d
-   {0, Abso, "ASL" },   // 0e
-   {3, Long, "ORA" },   // 0f  BBR0
-
-   {0, Rela, "BPL" },   // 10
-   {0, Indy, "ORA" },   // 11
-   {1, Indi, "ORA" },   // 12
-   {2, Stay, "ORA" },   // 13
-   {1, Zpag, "TRB" },   // 14
-   {0, Zpgx, "ORA" },   // 15
-   {0, Zpgx, "ASL" },   // 16
-   {3, Lony, "ORA" },   // 17  RMB1
-   {0, Impl, "CLC" },   // 18
-   {0, Absy, "ORA" },   // 19
-   {1, Accu, "INC" },   // 1a
-   {2, Impl, "TCS" },   // 1b
-   {1, Abso, "TRB" },   // 1c
-   {0, Absx, "ORA" },   // 1d
-   {0, Absx, "ASL" },   // 1e
-   {3, Lonx, "ORA" },   // 1f  BBR1
-
-   {0, Abso, "JSR" },   // 20
-   {0, Indx, "AND" },   // 21
-   {3, Long, "JSL" },   // 22
-   {2, Stac, "AND" },   // 23
-   {0, Zpag, "BIT" },   // 24
-   {0, Zpag, "AND" },   // 25
-   {0, Zpag, "ROL" },   // 26
-   {3, Indl, "AND" },   // 27  RMB2
-   {0, Impl, "PLP" },   // 28
-   {0, Imme, "AND" },   // 29
-   {0, Accu, "ROL" },   // 2a
-   {2, Impl, "PLD" },   // 2b
-   {0, Abso, "BIT" },   // 2c
-   {0, Abso, "AND" },   // 2d
-   {0, Abso, "ROL" },   // 2e
-   {3, Long, "AND" },   // 2f  BBR2
-
-   {0, Rela, "BMI" },   // 30
-   {0, Indy, "AND" },   // 31
-   {1, Indi, "AND" },   // 32
-   {2, Stay, "AND" },   // 33
-   {1, Zpgx, "BIT" },   // 34
-   {0, Zpgx, "AND" },   // 35
-   {0, Zpgx, "ROL" },   // 36
-   {3, Lony, "AND" },   // 37  RMB3
-   {0, Impl, "SEC" },   // 38
-   {0, Absy, "AND" },   // 39
-   {1, Accu, "DEC" },   // 3a
-   {2, Impl, "TSC" },   // 3b
-   {1, Absx, "BIT" },   // 3c
-   {0, Absx, "AND" },   // 3d
-   {0, Absx, "ROL" },   // 3e
-   {3, Lonx, "AND" },   // 3f  BBR3
-
-   {0, Impl, "RTI" },   // 40
-   {0, Indx, "EOR" },   // 41
-   {3, Impl, "WDM" },   // 42
-   {2, Stac, "EOR" },   // 43
-   {3, Abso, "MVP" },   // 44
-   {0, Zpag, "EOR" },   // 45
-   {0, Zpag, "LSR" },   // 46
-   {3, Indl, "EOR" },   // 47  RMB4
-   {0, Impl, "PHA" },   // 48
-   {0, Imme, "EOR" },   // 49
-   {0, Accu, "LSR" },   // 4a
-   {2, Impl, "PHK" },   // 4b
-   {0, Abso, "JMP" },   // 4c
-   {0, Abso, "EOR" },   // 4d
-   {0, Abso, "LSR" },   // 4e
-   {3, Long, "EOR" },   // 4f  BBR4
-
-   {0, Rela, "BVC" },   // 50
-   {0, Indy, "EOR" },   // 51
-   {1, Indi, "EOR" },   // 52
-   {2, Stay, "EOR" },   // 53
-   {2, Abso, "MVN" },   // 54
-   {0, Zpgx, "EOR" },   // 55
-   {0, Zpgx, "LSR" },   // 56
-   {3, Lony, "EOR" },   // 57  RMB5
-   {0, Impl, "CLI" },   // 58
-   {0, Absy, "EOR" },   // 59
-   {1, Impl, "PHY" },   // 5a
-   {2, Impl, "TCD" },   // 5b
-   {3, Long, "JMP" },   // 5c
-   {0, Absx, "EOR" },   // 5d
-   {0, Absx, "LSR" },   // 5e
-   {3, Lonx, "EOR" },   // 5f  BBR5
-
-   {0, Impl, "RTS" },   // 60
-   {0, Indx, "ADC" },   // 61
-   {2, Abso, "PER" },   // 62
-   {2, Stac, "ADC" },   // 63
-   {1, Zpag, "STZ" },   // 64
-   {0, Zpag, "ADC" },   // 65
-   {0, Zpag, "ROR" },   // 66
-   {3, Indl, "ADC" },   // 67  RMB6
-   {0, Impl, "PLA" },   // 68
-   {0, Imme, "ADC" },   // 69
-   {0, Accu, "ROR" },   // 6a
-   {3, Impl, "RTL" },   // 6b
-   {0, Indi, "JMP" },   // 6c
-   {0, Abso, "ADC" },   // 6d
-   {0, Abso, "ROR" },   // 6e
-   {3, Long, "ADC" },   // 6f  BBR6
-
-   {0, Rela, "BVS" },   // 70
-   {0, Indy, "ADC" },   // 71
-   {1, Indi, "ADC" },   // 72
-   {2, Stay, "ADC" },   // 73
-   {1, Zpgx, "STZ" },   // 74
-   {0, Zpgx, "ADC" },   // 75
-   {0, Zpgx, "ROR" },   // 76
-   {3, Lony, "ADC" },   // 77  RMB7
-   {0, Impl, "SEI" },   // 78
-   {0, Absy, "ADC" },   // 79
-   {1, Impl, "PLY" },   // 7a
-   {2, Impl, "TDC" },   // 7b
-   {1, Indx, "JMP" },   // 7c
-   {0, Absx, "ADC" },   // 7d
-   {0, Absx, "ROR" },   // 7e
-   {3, Lonx, "ADC" },   // 7f  BBR7
-
-   {1, Rela, "BRA" },   // 80
-   {0, Indx, "STA" },   // 81
-   {2, Abso, "BRL" },   // 82
-   {2, Stac, "STA" },   // 83
-   {0, Zpag, "STY" },   // 84
-   {0, Zpag, "STA" },   // 85
-   {0, Zpag, "STX" },   // 86
-   {3, Indl, "STA" },   // 87  SMB0
-   {0, Impl, "DEY" },   // 88
-   {1, Imme, "BIT" },   // 89
-   {0, Impl, "TXA" },   // 8a
-   {2, Impl, "PHB" },   // 8b
-   {0, Abso, "STY" },   // 8c
-   {0, Abso, "STA" },   // 8d
-   {0, Abso, "STX" },   // 8e
-   {3, Long, "STA" },   // 8f  BBS0
-
-   {0, Rela, "BCC" },   // 90
-   {0, Indy, "STA" },   // 91
-   {1, Indi, "STA" },   // 92
-   {2, Stay, "STA" },   // 93
-   {0, Zpgx, "STY" },   // 94
-   {0, Zpgx, "STA" },   // 95
-   {0, Zpgy, "STX" },   // 96
-   {3, Lony, "STA" },   // 97  SMB1
-   {0, Impl, "TYA" },   // 98
-   {0, Absy, "STA" },   // 99
-   {0, Impl, "TXS" },   // 9a
-   {2, Impl, "TXY" },   // 9b
-   {1, Abso, "STZ" },   // 9c
-   {0, Absx, "STA" },   // 9d
-   {1, Absx, "STZ" },   // 9e
-   {3, Lonx, "STA" },   // 9f  BBS1
-
-   {0, Imme, "LDY" },   // a0
-   {0, Indx, "LDA" },   // a1
-   {0, Imme, "LDX" },   // a2
-   {2, Stac, "LDA" },   // a3
-   {0, Zpag, "LDY" },   // a4
-   {0, Zpag, "LDA" },   // a5
-   {0, Zpag, "LDX" },   // a6
-   {3, Indl, "LDA" },   // a7  SMB2
-   {0, Impl, "TAY" },   // a8
-   {0, Imme, "LDA" },   // a9
-   {0, Impl, "TAX" },   // aa
-   {2, Impl, "PLB" },   // ab
-   {0, Abso, "LDY" },   // ac
-   {0, Abso, "LDA" },   // ad
-   {0, Abso, "LDX" },   // ae
-   {3, Long, "LDA" },   // af  BBS2
-
-   {0, Rela, "BCS" },   // b0
-   {0, Indy, "LDA" },   // b1
-   {1, Indi, "LDA" },   // b2
-   {2, Stay, "LDA" },   // b3
-   {0, Zpgx, "LDY" },   // b4
-   {0, Zpgx, "LDA" },   // b5
-   {0, Zpgy, "LDX" },   // b6
-   {3, Lony, "LDA" },   // b7  SMB3
-   {0, Impl, "CLV" },   // b8
-   {0, Absy, "LDA" },   // b9
-   {0, Impl, "TSX" },   // ba
-   {2, Impl, "TYX" },   // bb
-   {0, Absx, "LDY" },   // bc
-   {0, Absx, "LDA" },   // bd
-   {0, Absy, "LDX" },   // be
-   {3, Lonx, "LDA" },   // bf  BBS3
-
-   {0, Imme, "CPY" },   // c0
-   {0, Indx, "CMP" },   // c1
-   {2, Imme, "REP" },   // c2
-   {2, Stac, "CMP" },   // c3
-   {0, Zpag, "CPY" },   // c4
-   {0, Zpag, "CMP" },   // c5
-   {0, Zpag, "DEC" },   // c6
-   {3, Indl, "CMP" },   // c7  SMB4
-   {0, Impl, "INY" },   // c8
-   {0, Imme, "CMP" },   // c9
-   {0, Impl, "DEX" },   // ca
-   {2, Impl, "WAI" },   // cb
-   {0, Abso, "CPY" },   // cc
-   {0, Abso, "CMP" },   // cd
-   {0, Abso, "DEC" },   // ce
-   {3, Long, "CMP" },   // cf  BBS4
-
-   {0, Rela, "BNE" },   // d0
-   {0, Indy, "CMP" },   // d1
-   {1, Indi, "CMP" },   // d2
-   {2, Stay, "CMP" },   // d3
-   {2, Indi, "PEI" },   // d4
-   {0, Zpgx, "CMP" },   // d5
-   {0, Zpgx, "DEC" },   // d6
-   {3, Lony, "CMP" },   // d7  SMB5
-   {0, Impl, "CLD" },   // d8
-   {0, Absy, "CMP" },   // d9
-   {1, Impl, "PHX" },   // da
-   {2, Impl, "STP" },   // db
-   {3, Indl, "JMP" },   // dc
-   {0, Absx, "CMP" },   // dd
-   {0, Absx, "DEC" },   // de
-   {3, Lonx, "CMP" },   // df  BS5
-
-   {0, Imme, "CPX" },   // e0
-   {0, Indx, "SBC" },   // e1
-   {2, Imme, "SEP" },   // e2
-   {2, Stac, "SBC" },   // e3
-   {0, Zpag, "CPX" },   // e4
-   {0, Zpag, "SBC" },   // e5
-   {0, Zpag, "INC" },   // e6
-   {3, Indl, "SBC" },   // e7  SMB6
-   {0, Impl, "INX" },   // e8
-   {0, Imme, "SBC" },   // e9
-   {0, Impl, "NOP" },   // ea
-   {2, Impl, "XBA" },   // eb
-   {0, Abso, "CPX" },   // ec
-   {0, Abso, "SBC" },   // ed
-   {0, Abso, "INC" },   // ee
-   {3, Long, "SBC" },   // ef  BBS6
-
-   {0, Rela, "BEQ" },   // f0
-   {0, Indy, "SBC" },   // f1
-   {1, Indi, "SBC" },   // f2
-   {2, Stay, "SBC" },   // f3
-   {2, Abso, "PEA" },   // f4
-   {0, Zpgx, "SBC" },   // f5
-   {0, Zpgx, "INC" },   // f6
-   {3, Lony, "SBC" },   // f7  SMB7
-   {0, Impl, "SED" },   // f8
-   {0, Absy, "SBC" },   // f9
-   {1, Impl, "PLX" },   // fa
-   {2, Impl, "XCE" },   // fb
-   {2, Absx, "JSR" },   // fc
-   {0, Absx, "SBC" },   // fd
-   {0, Absx, "INC" },   // fe
-   {3, Lonx, "SBC" }    // ff  BBS7
-};
 
 #define UNDEF 0xff0000
 
@@ -836,9 +629,9 @@ char Comment[ML];
 char LengthInfo[ML];
 char ModuleName[ML];
 
-#define LDEF 1
-#define LBSS 2
-#define LPOS 3
+#define LDEF 20
+#define LBSS 21
+#define LPOS 22
 
 #define MAXLAB 8000
 
@@ -935,27 +728,23 @@ void ErrorLine(char *p)
 
 void ListSymbols(FILE *lf, int n, int lb, int ub);
 
+// ********
+// ErrorMsg
+// ********
 
-#define SIZE_ERRMSG 1024
-
-void ErrorMsg(const char *format, ...) {
+void ErrorMsg(const char *format, ...)
+{
    va_list args;
-   char *buf;
-
-   buf = MallocOrDie(SIZE_ERRMSG);
-   snprintf(buf, SIZE_ERRMSG, "\n*** Error in file %s line %d:\n",
+   char buf[1024];
+   memset(buf,0,sizeof(buf));
+   snprintf(buf, sizeof(buf)-1, "\n*** Error in file %s line %d:\n",
          IncludeStack[IncludeLevel].Src, LiNo);
    va_start(args,format);
-   vsnprintf(buf+strlen(buf), SIZE_ERRMSG-strlen(buf), format, args);
+   vsnprintf(buf+strlen(buf), sizeof(buf)-strlen(buf)-1, format, args);
    va_end(args);
    fputs(buf, stdout);
    fputs(buf, lf);
-   if (df)
-   {
-      fputs(buf, df);
-      ListSymbols(df,Labels,0,0xffff);
-   }
-   free(buf);
+   if (df) fputs(buf, df);
 }
 
 void PrintLiNo(int Blank)
@@ -1004,74 +793,106 @@ void PrintPCLine(void)
    fprintf(lf,"          %s\n",Line);
 }
 
+int OperandExists(char *p)
+{
+   while (isspace(*p)) ++p;
+   if (*p == ';' || *p ==  0 ) return 0;
+   if (*p != 'A' && *p != 'a') return 1;
+
+   // treat accumulator mode as implied
+
+   ++p;
+   while (isspace(*p)) ++p;
+   return (*p != ';' && *p !=  0 );
+}
+
+// *************
+// IsInstruction
+// *************
+
 int IsInstruction(char *p)
 {
-   int i,l;
-   struct AM_Inherent_Struct *is;
-   struct AM_Register_Struct *rs;
+   unsigned int i;
 
    // Initialize
 
    am  = AM_None; // address mode
    Mne = NULL;    // menmonic
+   GenIndex = -1;
 
-   // Check table of inherent instructions
+   // length of mnemonic must be 3 or 4
 
-   for (is = AM_Inherent_Tab; is->Opcode >= 0; ++is)
+   if (strlen(p) < 3) return -1;
+
+   // first three characters must be letters
+
+   if (!(isalpha(p[0]) && isalpha(p[1]) && isalpha(p[2]))) return -1;
+
+   // Check 4 character mnemonics
+
+   if (strlen(p) > 5 && p[3] >= '0' && p[3] <= '7' && isspace(p[4]))
+   for (i=0 ; i < BITS ; ++i)
    {
-      l = strlen(is->Mnemonic);
-      if (!Strncasecmp(p,is->Mnemonic,l) && !isym(p[l]))
+      if (!Strncasecmp(p,Bit[i].Mne,3) // match mnemonic
+      &&  !(Bit[i].CPU & CPU_Type))    // match CPU
       {
-         // printf("\n*** %2.2x %s ***\n",is->Opcode,is->Mnemonic);
-         am  = AM_Inherent;
-         Mne = is->Mnemonic;
-         return is->Opcode;
+         am  = AM_Bits;
+         Mne = Bit[i].Mne;
+         if (df) fprintf(df,"Bit:%s %2.2x\n",Mne,Bit[i].Opc);
+         return Bit[i].Opc;
       }
    }
 
-   // Check table of instructions with register operands only
+   // chacter after mnemonic must be zero or white space
 
-   for (rs = AM_Register_Tab; rs->Opcode >= 0; ++rs)
+   if (p[3] && !isspace(p[3])) return -1;
+
+   // Check table of implied instructions
+
+   if (!OperandExists(p+3))
+   for (i=0 ; i < IMPS ; ++i)
    {
-      l = strlen(rs->Mnemonic);
-      if (!Strncasecmp(p,rs->Mnemonic,l) && !isym(p[l]))
+      if (!Strncasecmp(p,Imp[i].Mne,3) // match mnemonic
+      &&  !(Imp[i].CPU & CPU_Type))    // match CPU
       {
-         am  = AM_Register;
-         Mne = rs->Mnemonic;
-         return rs->Opcode;
+         am  = AM_Impl;
+         Mne = Imp[i].Mne;
+         if (df) fprintf(df,"Imp:%s %2.2x\n",Mne,Imp[i].Opc);
+         return Imp[i].Opc;
       }
    }
 
-   // Check for 6502 & 65c02 3-letter mnemonics
+   // Check for branch instructions
 
-   if (isalpha(p[0]) && isalpha(p[1]) && isalpha(p[2]) && !isym(p[3]))
-   for (i=0 ; i < 256 ; ++i)
+   for (i=0 ; i < RELS ; ++i)
    {
-      if (!Strncasecmp(p,set[i].mne,3))
+      if (!Strncasecmp(p,Rel[i].Mne,3) // match mnemonic
+      &&  !(Rel[i].CPU & CPU_Type))    // match CPU
       {
-         if (set[i].cpu > CPU_Type && set[i].amo == Impl)
-         {
-            ErrorLine(p);
-            ErrorMsg("Found 65c02 instruction in 6502 mode\n"
-                     "Set: CPU = 65c02 to enable 65c02 mode\n");
-            exit(1);
-         }
-         return i; // Is instruction!
+         am  = AM_Rela;
+         Mne = Rel[i].Mne;
+         if (df) fprintf(df,"Rel:%s %2.2x\n",Mne,Rel[i].Opc);
+         return Rel[i].Opc;
       }
    }
 
-   // Check for 65c02 4-letter mnemonics
+   // Check for all other mnemonics
 
-   if (CPU_Type > 0 &&
-       isalpha(p[0]) && isalpha(p[1]) && isalpha(p[2]) &&
-       (p[3] >= '0' && p[3] <= '7') && !isym(p[4]))
-   for (i=0 ; i < 256 ; ++i)
+   for (i=0 ; i < GENS ; ++i)
    {
-      if (!Strncasecmp(p,set[i].mne,4) && set[i].cpu <= CPU_Type)
-         return i; // Is instruction!
+      if (!Strncasecmp(p,Gen[i].Mne,3) // match mnemonic
+      &&  !(Gen[i].CPU & CPU_Type))    // match CPU
+      {
+         Mne = Gen[i].Mne;
+         if (df) fprintf(df,"Gen:%s %2.2x\n",Mne,i);
+         GenIndex = i;
+         return 256+i;
+      }
    }
 
-   return -1; // No mnemonic
+   // No mnemonic
+
+   return -1;
 }
 
 char *NeedChar(char *p, char c)
@@ -1584,12 +1405,6 @@ char *SkipToComma(char *p)
 }
 
 
-int OperandExists(char *p)
-{
-   while (*p == ' ') ++p;
-   return (*p != ';' && *p != 0);
-}
-
 char *op_par(char *p, int *v)
 {
    char c = (*p == '[') ? ']' : ')'; // closing char
@@ -1891,19 +1706,19 @@ char *IncludeFile(char *p)
 
 char *ParseCPUData(char *p)
 {
+   int i;
    p = SkipSpace(p);
-   for (CPU_Type = CPU_6502 ; CPU_Type < CPU_End ; ++CPU_Type)
+   for (i=0, CPU_Type = 1 ; i < CPU_NAMES ; ++i,CPU_Type <<=1)
    {
-      if (!Strncasecmp(p,CPU_Name[CPU_Type],strlen(CPU_Name[CPU_Type]))) break;
+      if (!Strncasecmp(p,CPU_Names[i],strlen(CPU_Names[i]))) break;
    }
-   if (CPU_Type == CPU_End)
+   if (i == CPU_NAMES)
    {
       ErrorMsg("Unsupported CPU type <%s>\n",p);
       exit(1);
    }
-   AM_Inherent_Tab = CPU_Property_Tab[CPU_Type].AM_Inherent_Tab;
-   AM_Register_Tab = CPU_Property_Tab[CPU_Type].AM_Register_Tab;
-   WordOC          = CPU_Property_Tab[CPU_Type].WordOC;
+   CPU_Name = CPU_Names[i];
+   if (df) fprintf(df,"new CPU: %s [%d]\n",CPU_Name,CPU_Type);
    PrintLine();
    return p;
 }
@@ -2202,20 +2017,145 @@ char *IsData(char *p)
    return p;
 }
 
+// ***********
+// AddressMode
+// ***********
+
+int AddressMode(unsigned char *p)
+{
+   size_t l = strlen((const char *)p);
+   char s = 0;
+   char i = 0;
+   char m = 0;
+   char o = 0;
+   int oi = 0;
+   int mi = 0;
+   int ii = 0;
+
+   // prefix character
+
+   s = p[0];
+
+   // immediate
+
+   if (s == '#')
+   {
+      p[0] = ' ';
+      il = 2;
+      return AM_Imme;
+   }
+
+   if (s != '(' && s != '[') s = 0;
+
+   // outer character
+
+   if (l > 0) o = toupper(p[l-1]);
+   if (o != ')' && o != 'X' && o != 'Y' && o != 'Z') o = 0;
+   else oi = l-1;
+
+   if (o)
+   {
+      --l;
+      while (l > 0 && isspace(p[l-l])) --l;
+
+      // middle character
+
+      if (l > 0) m = toupper(p[l-1]);
+      if (m != ',' && m != 'X') m = 0;
+      else mi = l-1;
+
+      if (m)
+      {
+         --l;
+         while (l > 0 && isspace(p[l-l])) --l;
+
+         // inner character
+
+         if (l > 0) i = toupper(p[l-1]);
+         if (i != ',' && i != ')' && i != ']') i = 0;
+         else ii = l-1;
+      }
+   }
+
+   // [DP],Z : 32 bit indirect address
+
+   if (s == '[' && i == ']' && m == ',' && o == 'Z')
+   {
+      il = 3;
+      p[0] = p[ii] = p[mi] = p[oi] = ' ';
+      return AM_Indz;
+   }
+
+   // (DP),Z : 16 bit indirect address
+
+   if (s == '(' && i == ')' && m == ',' && o == 'Z')
+   {
+      il = 2;
+      p[0] = p[ii] = p[mi] = p[oi] = ' ';
+      return AM_Indz;
+   }
+
+   // (DP),Y : 16 bit indirect address
+
+   if (s == '(' && i == ')' && m == ',' && o == 'Y')
+   {
+      il = 2;
+      p[0] = p[ii] = p[mi] = p[oi] = ' ';
+      return AM_Indy;
+   }
+
+   // (DP,X) : 16 bit indirect address
+
+   if (s == '(' && i == ',' && m == 'X' && o == ')')
+   {
+      il = 2;
+      p[0] = p[ii] = p[mi] = p[oi] = ' ';
+      return AM_Indx;
+   }
+
+   // (ADR) : same mode as (DP),Z
+
+   if (s == '(' && o == ')')
+   {
+      il = 3;
+      p[0] = p[oi] = ' ';
+      return AM_Indz;
+   }
+
+   // ADR,Y : indexed address
+
+   if (m == ',' && o == 'Y')
+   {
+      il = 3;
+      p[mi] = p[oi] = ' ';
+      return AM_Absy;
+   }
+
+   // ADR,X : indexed address
+
+   if (m == ',' && o == 'X')
+   {
+      il = 3;
+      p[mi] = p[oi] = ' ';
+      return AM_Absx;
+   }
+
+   return AM_Abso;
+}
+
+// ************
+// SplitOperand
+// ************
 
 char * SplitOperand(char *p)
 {
-   int i,l,inquo,inapo,Sule,amo;
-   int SuffMatch;
-   char Pref;
-   char *Suff;
-   char *Mnem;
+   int l,inquo,inapo,to;
 
    l       =    0; // length of trimmed operand
    il      =    3; // default instruction length
-   am      = Abso; // default address mode
    inquo   =    0; // inside quotes
    inapo   =    0; // inside apostrophes
+   am   = AM_Abso; // default address mode
 
    // Extract operand
 
@@ -2230,134 +2170,113 @@ char * SplitOperand(char *p)
    Operand[l] = 0; // end marker
    while (l && isspace(Operand[l-1])) Operand[--l] = 0;
 
+   if (oc > 255)
+   {
+      am = AddressMode(Operand);
+      if (df) fprintf(df,"AMOC: %s %d\n",Gen[GenIndex].Mne,am);
+      if (am < 9)
+      {
+         to = Gen[GenIndex].Opc[am];
+         if (to == -1 && am == AM_Absx)
+         {
+            am = AM_Dpgx;
+            il = 2;
+            oc = Gen[GenIndex].Opc[AM_Dpgx];
+         }
+         else oc = to;
+      }
+   }
+
+   if (oc < 0 || oc > 255)
+   {
+      ++ErrNum;
+      ErrorLine(p);
+      ErrorMsg("syntax error\n");
+      exit(1);
+   }
+
    // Allow BIT mnemonic with missing operand
    // used to skip next 2 byte statement
 
    if (l == 0 && oc == 0x24)
    {
       oc = 0x2c;
-      am = Impl;
+      am = AM_Impl;
       il = 1;
       return p;
-   }
-
-   // tolerate Accumulator with missing operand
-
-   if (l == 0 && (CPU_Type <= CPU_65C02) &&
-      (oc == 0x0a || oc == 0x2a || oc == 0x4a || oc == 0x6a))
-   {
-      Operand[0] = 0;
-      am = Accu;
-      il = 1;
-      return p;
-   }
-
-   // Check for existing operand
-
-   if (l < 1)
-   {
-      ErrorLine(p);
-      ErrorMsg("Missing operand\n");
-      exit(1);
-   }
-
-   // Immediate
-
-   if (Operand[0] == '#')
-   {
-      Operand[0] = ' ';
-      am = Imme;
-      il = 2;
-      return p;
-   }
-
-   // Accumulator
-
-   if (l == 1 && (Operand[0] == 'A' || Operand[0] == 'a'))
-   {
-      Operand[0] = 0;
-      am = Accu;
-      il = 1;
-      return p;
-   }
-
-   // Look for a matching combination of mnemonic, prefix and suffix
-
-   Mnem = set[oc].mne; // Current mnemonic
-
-   //  ( ),Y  (  ,X)   ( )   ,Y   ,X
-   for (amo = Indy ; amo >= Absx ; amo--)
-   {
-      Pref = Prefix[amo];
-      Suff = Suffix[amo];
-      Sule = strlen(Suff);
-
-      // check for Commodore Syntax (ind)y
-
-      if (amo == Indy && l > 2 && Operand[l-2] == ')' &&
-         (Operand[l-1] == 'Y' || Operand[l-1] == 'y'))
-         SuffMatch = 1;
-      else
-      SuffMatch = (l > Sule && !Strcasecmp((const char *)(Operand+l-Sule),Suff));
-
-      if ((Operand[0] == Pref || Pref == ' ') && SuffMatch)
-      for (i=0 ; i < 256 ; ++i)
-      {
-          if (CPU_Type >= set[i].cpu &&       // CPU      match ?
-          Pref == Prefix[set[i].amo] &&       // Prefix   match ?
-          !strcmp(Suffix[set[i].amo],Suff) && // Suffix   match ?
-          !strcmp(set[i].mne,Mnem))           // Mnemonic match ?
-          {
-            am = amo;
-            il = Lenfix[am];
-            // specual code for (ind)y
-            if (amo == Indy && Operand[l-2] == ')') Operand[l-2] = 0;
-            else Operand[l-=Sule] = 0;
-            if (Pref == '(') Operand[0] = ' ';
-            if (df) fprintf(df,"Split {%c} {%s} {%s}\n",Pref,Operand,Suff);
-            return p;
-          }
-      }
    }
    return p;
 }
 
+// *********
+// CPU_Error
+// *********
 
-void AdjustOpcode(char *p)
+void CPU_Error(void)
 {
-   int i;
-
-   if (CPU_Type > CPU_65816) return;
-
-   if (oc == 0x20) am = Abso; // JSR
-   if (oc == 0x4c && am == Zpag) am = Abso; // JMP
-   if (oc != 0x86 && oc != 0xa2 && am == Zpgy) am = Absy; // Only LDX/STX
-   if (oc == 0x4c && am == Indi)
-   {
-      oc = 0x6c; // JMP (nnnn)
-      il = 3;
-      return;
-   }
-   if (oc == 0x4c && am == Indx)
-   {
-      oc = 0x7c; // JMP (nnnn,X)
-      il = 3;
-      return;
-   }
-   for (i=0 ; i < 256 ; ++i)
-   {
-      if (!strcmp(set[oc].mne,set[i].mne) && am == set[i].amo)
-      {
-         oc = i;
-         il = Lenfix[set[i].amo];
-         return;
-      }
-   }
-   if (oc == 0x2c && am == Impl) return; // BIT
-
-   ErrorMsg("Illegal address mode %d for %s\n",am,set[oc].mne);
-   ErrorLine(p);
+   ++ErrNum;
+   ErrorLine(Line);
+   ErrorMsg("Illegal instruction or operand for CPU %s\n",CPU_Name);
    exit(1);
+}
+
+// ************
+// AdjustOpcode
+// ************
+
+void AdjustOpcode(int *v)
+{
+   // JMP
+
+   if (GenIndex == JMPIndex)
+   {
+      if (am == AM_Indx && CPU_Type < CPU_65SC02) CPU_Error();
+      il = 3; // JMP (addr,X) uses 16 bit address
+      return;
+   }
+
+   // JSR
+
+   if (GenIndex == JSRIndex)
+   {
+      if (am == AM_Indx && CPU_Type < CPU_45GS02) CPU_Error();
+      il = 3; // JSR (addr,X) uses 16 bit address
+      if (CPU_Type == CPU_65816) oc = 0xfc;
+      return;
+   }
+
+   // BIT
+
+   if (GenIndex == BITIndex)
+   {
+      if (am > AM_Abso && CPU_Type < CPU_65SC02) CPU_Error();
+      return;
+   }
+
+   // STY
+
+   if (GenIndex == STYIndex)
+   {
+      if (am == AM_Absx && CPU_Type != CPU_45GS02) CPU_Error();
+      return;
+   }
+
+   // PHW
+
+   if (GenIndex == PHWIndex)
+   {
+      if (am == AM_Imme) il = 3;
+      return;
+   }
+
+   // MEGA65 32 bit indirect address mode
+
+   if (am == AM_Indz && il == 3)
+   {
+      *v = (*v << 8) | oc;
+      oc = 0xea;   // NOP   (DP),Z
+      return;
+   }
 }
 
 
@@ -2447,9 +2366,14 @@ int CheckCondition(char *p)
 }
 
 
+
+
+// ************
+// GenerateCode
+// ************
+
 char *GenerateCode(char *p)
 {
-   int ibi = 0; // instruction byte index
    int v,lo,hi;
    char *o;
 
@@ -2466,23 +2390,40 @@ char *GenerateCode(char *p)
    }
    if (df) fprintf(df,"GenerateCode %4.4X %s\n",pc,p);
 
-   // inherent instruction (no operand)
+   // implied instruction (no operand or implied A register)
 
-   if (am == AM_Inherent)
+   if (am == AM_Impl)
    {
-      il = 1 + (oc > 255); // instruction length
-      p += strlen(Mne) ;   // skip mnemonic
-      if (OperandExists(p))
+      il = 1;              // instruction length
+      p += 3;              // skip mnemonic
+   }
+
+   // branches
+
+   else if (am == AM_Rela)
+   {
+      il = 2;
+      o = EvalOperand(p+3,&v,0);
+      if (v != UNDEF) v  -= (pc + 2);
+      if (Phase == 2 && v == UNDEF)
       {
          ErrorLine(p);
-         ErrorMsg("Inherent/Implied address mode must not have operands\n");
+         ErrorMsg("Branch to undefined label\n");
+         exit(1);
+      }
+      if (Phase == 2 && (v < -128 || v > 127))
+      {
+         ErrorLine(p);
+         ErrorMsg("Branch too long (%d)\n",v);
          exit(1);
       }
    }
 
+   // anything else
+
    else
    {
-      p = SkipSpace(p+strlen(set[oc].mne)) ; // Skip mnemonic & space
+      p = SkipSpace(p+4) ; // Skip mnemonic & space
       p = SplitOperand(p);
    }
 
@@ -2495,45 +2436,40 @@ char *GenerateCode(char *p)
          exit(1);
       }
       o = EvalOperand((char *)Operand,&v,0);
-      if (am == Imme)
-      {
-         if (v > -128 && v < 256)
-         {
-            il = 2;
-            am = Imme;
-         }
-         else if (Phase == 2)
+      if (GenIndex != PHWIndex && am == AM_Imme && Phase == 2 &&
+          (v < -128 || v > 255))
          {
             ErrorLine(p);
             ErrorMsg("Immediate value out of range (%d)\n",v);
             exit(1);
-         }
       }
-      else if (set[oc].amo == Rela)
+      else if (v >= 0 && v < 256 && GenIndex >= 0)
       {
-         il = 2;
-         am = Rela;
-         if (v != UNDEF) v  -= (pc + 2);
-         if (Phase == 2 && v == UNDEF)
+         if (am == AM_Abso && Gen[GenIndex].Opc[AM_Dpag] >= 0)
          {
-            ErrorLine(p);
-            ErrorMsg("Branch to undefined label\n");
-            exit(1);
+            am = AM_Dpag;
+            oc = Gen[GenIndex].Opc[AM_Dpag];
+            il = 2;
          }
-         if (Phase == 2 && (v < -128 || v > 127))
+         else if (am == AM_Absx && Gen[GenIndex].Opc[AM_Dpgx] >= 0)
          {
-            ErrorLine(p);
-            ErrorMsg("Branch too long (%d)\n",v);
-            exit(1);
+            am = AM_Dpgx;
+            oc = Gen[GenIndex].Opc[AM_Dpgx];
+            il = 2;
          }
-      }
-      else if (v >= 0 && v < 256 && am >= Abso && am <= Absy)
-      {
-         il = 2;
-         am -= 3; // Abso -> Zpag, Absx -> Zpgx, Absy -> Zpgy
+         else if (oc == 0xbe) // LDX Abs,Y
+         {
+            oc = 0xb6;        // LDX DP,Y
+            il = 2;
+         }
+         else if (oc == 0x9b) // STX Abs,Y
+         {
+            oc = 0x96;        // STX DP,Y
+            il = 2;
+         }
       }
    }
-   else if (am != Impl && am != Accu)
+   else if (am != AM_Impl && am != AM_Rela)
    {
       ErrorLine(p);
       ErrorMsg("Operand missing\n");
@@ -2545,7 +2481,7 @@ char *GenerateCode(char *p)
       ErrorMsg("Operand syntax error\n<%s>\n",o);
       exit(1);
    }
-   AdjustOpcode(p);
+   AdjustOpcode(&v);
    if (Phase == 2)
    {
       if (v == UNDEF)
@@ -2566,20 +2502,9 @@ char *GenerateCode(char *p)
 
       // insert binary code
 
-      if (oc > 255) // two byte opcode
-      {
-         ROM[pc  ] = oc >> 8;
-         ROM[pc+1] = oc;
-         ibi = 2;
-      }
-      else
-      {
-         ROM[pc] = oc;
-         ibi = 1;
-      }
-
-      if (il > ibi  ) ROM[pc+ibi  ] = lo;
-      if (il > ibi+1) ROM[pc+ibi+1] = hi;
+      ROM[pc] = oc;
+      if (il > 1) ROM[pc+1] = lo;
+      if (il > 2) ROM[pc+2] = hi;
 
       PrintPC();
       PrintOC();
@@ -2823,9 +2748,14 @@ void NextMacLine(char *w)
 }
 
 
+// *********
+// ParseLine
+// *********
+
 void ParseLine(char *cp)
 {
    int i,v,m;
+   // char *start = cp;  // Remember start of line
 
    am = -1;
    oc = -1;
@@ -2907,11 +2837,13 @@ void ParseLine(char *cp)
 
 void Phase1Listing(void)
 {
-   fprintf(df,"%5d %4.4x",LiNo,pc);
-   if (Label[0]) fprintf(df,"  Label:[%s]",Label);
-   if (oc >= 0) fprintf(df,"  Op:%2.2x %s",oc,set[oc].mne);
-   if (Operand[0]) fprintf(df,"  %s",Operand);
-   if (Comment[0]) fprintf(df,"  %s",Comment);
+   if (Line[0] == 0 || Line[0] == ';') return;
+   fprintf(df,"%s\n",Line);
+   fprintf(df,"%5d",LiNo);
+   if (pc >= 0) fprintf(df," %4.4x",pc);
+   else         fprintf(df,"     ");
+   if (Label[0]) fprintf(df," [%s]",Label);
+   if (Operand[0]) fprintf(df,"  <%s>",Operand);
    fprintf(df,"\n");
 }
 
@@ -2935,7 +2867,7 @@ int CloseInclude(void)
 
 void Phase1(void)
 {
-    int l,Eof;
+   int l,Eof;
 
    Phase = 1;
    ForcedEnd = 0;
@@ -2943,7 +2875,6 @@ void Phase1(void)
    Eof = feof(sf);
    while (!Eof || IncludeLevel > 0)
    {
-      if (df) fprintf(df,"Phase 1:%s",Line);
       ++LiNo; ++TotalLiNo;
       l = strlen(Line);
       if (l && Line[l-1] == 10) Line[--l] = 0; // Remove linefeed
@@ -3021,8 +2952,8 @@ void ListSymbols(FILE *lf, int n, int lb, int ub)
          fprintf(lf,"%6d",lab[i].Ref[j]);
          l = lab[i].Att[j];
          if (l == LDEF || l == LBSS || l == LPOS) A = 'D';
-         else if (l == Indx) A = 'x';
-         else if (l == Indy) A = 'y';
+         else if (l == AM_Indx) A = 'x';
+         else if (l == AM_Indy) A = 'y';
          else  A = ' ';
          if ((A != ' ' || (j % 5) != 4) && j != lab[i].NumRef)
             fprintf(lf,"%c",A);
@@ -3041,7 +2972,7 @@ void PairSymbols(void)
    {
       indy = 0;
       for (j=0 ; j <= lab[i].NumRef ; ++j)
-      if (lab[i].Att[j] == Indy && lab[i+1].Address == lab[i].Address+1)
+      if (lab[i].Att[j] == AM_Indy && lab[i+1].Address == lab[i].Address+1)
       {
          indy = 1;
          break;
@@ -3196,7 +3127,7 @@ int main(int argc, char *argv[])
 
    printf("\n");
    printf("*******************************************\n");
-   printf("* Bit Shift Assembler 25-May-2020         *\n");
+   printf("* Bit Shift Assembler 28-Jul-2020         *\n");
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
@@ -3215,6 +3146,14 @@ int main(int argc, char *argv[])
    lf = fopen(Lst,"w");  // Listing
    if (Debug) df = fopen("Debug.lst","w");
    if (Preprocess) pf = fopen(Pre,"w");
+
+   CPU_Type = CPU_6502;
+   CPU_Name = CPU_Names[0];
+   JMPIndex = GetIndex("JMP");
+   JSRIndex = GetIndex("JSR");
+   BITIndex = GetIndex("BIT");
+   STYIndex = GetIndex("STY");
+   PHWIndex = GetIndex("PHW");
 
    Phase1();
    Phase2();
