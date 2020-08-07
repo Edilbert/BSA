@@ -292,9 +292,11 @@ struct ImpStruct
    {"TAZ",C45,0x4b},
    {"TAB",C45,0x5b},
    {"AUG",C45,0x5c},
+   {"MAP",C45,0x5c}, // AUG
    {"TZA",C45,0x6b},
    {"TBA",C45,0x7b},
    {"PHZ",C45,0xdb},
+   {"EOM",C45,0xea}, // NOP
    {"PLZ",C45,0xfb},
 
    // 65802 & 65816
@@ -625,7 +627,6 @@ char Line[ML];               // source line
 char Label[ML];
 char MacArgs[ML];
 unsigned char Operand[ML];
-char Comment[ML];
 char LengthInfo[ML];
 char ModuleName[ML];
 
@@ -2747,6 +2748,22 @@ void NextMacLine(char *w)
    *w = 0;
 }
 
+// ***********
+// CommentLine
+// ***********
+
+int CommentLine(char *p)
+{
+   p = SkipSpace(p);
+   if (*p == ';' || *p == 0) return 1;
+   if (*p == '*')
+   {
+      p = SkipSpace(p+1);
+      if (*p == '=') return 0; // set ORG
+      return 1;
+   }
+   return 0;
+}
 
 // *********
 // ParseLine
@@ -2761,7 +2778,6 @@ void ParseLine(char *cp)
    oc = -1;
    Label[0] = 0;
    Operand[0] = 0;
-   Comment[0] = 0;
    cp = SkipHexCode(cp);        // Skip disassembly
    cp = SkipSpace(cp);          // Skip leading blanks
    if (!strncmp(cp,"; **",4)) ModuleTrigger = LiNo;
@@ -2778,12 +2794,12 @@ void ParseLine(char *cp)
        if (MacroStopped) MacroStopped = 0;
        else fprintf(pf,"%s\n",Line); // write to preprocessed file
    }
-   if (*cp == 0 || *cp == ';')  // Empty or comment only
+   if (CommentLine(cp))
    {
       if (Phase == 2)
       {
-          if (*cp == ';') PrintLine();
-          else            PrintLiNo(-1);
+          if (*cp) PrintLine();
+          else     PrintLiNo(-1);
       }
       return;
    }
@@ -2832,7 +2848,6 @@ void ParseLine(char *cp)
       }
       GenerateCode(cp);
    }
-   if (*cp == ';') return;      // Comment line
 }
 
 void Phase1Listing(void)
