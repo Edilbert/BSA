@@ -4,7 +4,7 @@
 Bit Shift Assembler
 *******************
 
-Version: 28-Jul-2020
+Version: 12-Aug-2020
 
 The assembler was developed and tested on a MAC with OS Catalina.
 Using no specific options of the host system, it should run on any
@@ -555,7 +555,6 @@ int MacroStopped;   // Macro end flag
 int InsideMacro;    // Macro nesting level
 int CurrentMacro;   // Macro index
 int ModuleStart;    // Address of a module
-int ModuleTrigger;  // Start of module
 int WordOC;         // List 2 byte opcodes as word
 
 int ERRMAX = 10;    // Stop assemby after ERRMAX errors
@@ -628,7 +627,7 @@ char Label[ML];
 char MacArgs[ML];
 unsigned char Operand[ML];
 char LengthInfo[ML];
-char ModuleName[ML];
+char Scope[ML];
 
 #define LDEF 20
 #define LBSS 21
@@ -687,11 +686,21 @@ int isym(char c)
 
 char *GetSymbol(char *p, char *s)
 {
-   while (isym(*p)) *s++ = *p++;
+   if ((*p == '.' || *p == '_') && Scope[0]) // expand local symbol
+   {
+      strcpy(s,Scope);
+      s += strlen(s);
+      *s++ = *p++;
+   }
+   if (*p == '_' || isalnum(*p)) while (isym(*p)) *s++ = *p++;
    *s = 0;
    return p;
 }
 
+
+// **********
+// NextSymbol
+// **********
 
 char *NextSymbol(char *p, char *s)
 {
@@ -1052,6 +1061,13 @@ char *DefineLabel(char *p, int *val, int Locked)
       }
       *val = v;
       if (Locked) lab[j].Locked = Locked;
+      if (df)
+      {
+         if (lab[j].Address == UNDEF)
+            fprintf(df,"P%d:%s = UNDEFINED\n",Phase,lab[j].Name);
+         else
+            fprintf(df,"P%d:%s = $%4.4x\n",Phase,lab[j].Name,lab[j].Address);
+      }
    }
    else if (!Strncasecmp(p,".BSS",4))
    {
@@ -1117,6 +1133,7 @@ char *DefineLabel(char *p, int *val, int Locked)
       lab[j].Ref[0] = LiNo;
       lab[j].Att[0] = LPOS;
    }
+   if (df) fprintf(df,"P%d: {%s}=$%4.4x\n",Phase,lab[j].Name,lab[j].Address);
    return p;
 }
 
@@ -1662,9 +1679,8 @@ void ListSizeInfo()
       fprintf(lf,"          %s",Line);
       i = AddressIndex(ModuleStart);
       if (i >= 0)
-      {
-          fprintf(lf," ;%5d [%s]",pc-ModuleStart,lab[i].Name);
-      }
+          fprintf(lf," [%s] Size = %d [$%x]",lab[i].Name,
+                  pc-ModuleStart,pc-ModuleStart);
       fprintf(lf,"\n");
    }
 }
@@ -1978,15 +1994,18 @@ char *ParseByteData(char *p, int Charset)
    return p;
 }
 
+// ********
+// IsPseudo
+// ********
 
-char *IsData(char *p)
+char *IsPseudo(char *p)
 {
         if (!Strncasecmp(p,"WORD",4))    p = ParseWordData(p+4);
    else if (!Strncasecmp(p,"WOR",3))     p = ParseWordData(p+3);
    else if (!Strncasecmp(p,"BYTE",4))    p = ParseByteData(p+4,ASCII);
    else if (!Strncasecmp(p,"BYT",3))     p = ParseByteData(p+3,ASCII);
    else if (!Strncasecmp(p,"PET",3))     p = ParseByteData(p+3,PETSCII);
-   else if (!Strncasecmp(p,"SCREEN",6))  p = ParseByteData(p+6,SCREENCODE);
+   else if (!Strncasecmp(p,".SCREEN",7)) p = ParseByteData(p+7,SCREENCODE);
    else if (!Strncasecmp(p,"BITS",4))    p = ParseBitData(p+4);
    else if (!Strncasecmp(p,"LITS",4))    p = ParseLitData(p+4);
    else if (!Strncasecmp(p,"QUAD",4))    p = ParseLongData(p+4,4);
@@ -2003,12 +2022,6 @@ char *IsData(char *p)
    else if (!Strncasecmp(p,"SKI",3))     p += strlen(p);
    else if (!Strncasecmp(p,"PAG",3))     p += strlen(p);
    else if (!Strncasecmp(p,"END",3))     p += strlen(p);
-   else
-   {
-      ErrorMsg("Unknown pseudo op\n");
-      ErrorLine(p);
-      exit(1);
-   }
    if (pc > 0x10000 && pc != UNDEF)
    {
       ErrorMsg("Program counter overflow\n");
@@ -2561,7 +2574,7 @@ int ScanArguments(char *p, char *args, int ptr[])
       if (*p != ',')
       {
          ++ErrNum;
-         ErrorMsg("Syntax error in macro definition '%c'\n",*p);
+         ErrorMsg("Syntax error in macro '%c'\n",*p);
          exit(1);
       }
       ++p; // skip comma
@@ -2765,13 +2778,44 @@ int CommentLine(char *p)
    return 0;
 }
 
+// ***********
+// ParseModule
+// ***********
+
+char *ParseModule(char *p)
+{
+   p = SkipSpace(p);
+   DefineLabel(p,&ModuleStart,0);
+   strcpy(Scope,Label);
+   if (df) fprintf(df,"SCOPE: [%s]\n",Scope);
+   if (Phase == 2) fprintf(lf,"              %s\n",Line);
+   return p+strlen(p);
+}
+
+// ***********
+// ParseEndMod
+// ***********
+
+char *ParseEndMod(char *p)
+{
+   if (Phase == 2)
+   {
+      ListSizeInfo();
+   }
+   Scope[0] = 0;
+   ModuleStart = 0;
+   return p;
+}
+
+
+
 // *********
 // ParseLine
 // *********
 
 void ParseLine(char *cp)
 {
-   int i,v,m;
+   int v,m;
    // char *start = cp;  // Remember start of line
 
    am = -1;
@@ -2780,7 +2824,6 @@ void ParseLine(char *cp)
    Operand[0] = 0;
    cp = SkipHexCode(cp);        // Skip disassembly
    cp = SkipSpace(cp);          // Skip leading blanks
-   if (!strncmp(cp,"; **",4)) ModuleTrigger = LiNo;
    if (CheckCondition(cp)) return;
    if (Skipping)
    {
@@ -2803,6 +2846,8 @@ void ParseLine(char *cp)
       }
       return;
    }
+   if (!Strncasecmp(cp,"MODULE",6))    cp = ParseModule(cp+6);
+   if (!Strncasecmp(cp,"ENDMOD",6))    cp = ParseEndMod(cp+6);
    if (isalpha(*cp))            // Macro, Label or mnemonic
    {
       if (!Strncasecmp(cp,"MACRO ",6))
@@ -2816,7 +2861,6 @@ void ParseLine(char *cp)
          if (m < 0)
          {
             cp = DefineLabel(cp,&v,0);
-            if (ModuleTrigger == LiNo-1) ModuleStart = v;
             cp = SkipSpace(cp);         // Skip leading blanks
             if (*cp) ExpandMacro(cp);   // Macro after label
          }
@@ -2829,25 +2873,14 @@ void ParseLine(char *cp)
          }
       }
    }
-   if (*cp ==  0 ) return;             // No code
-   if (*cp == '*') cp = SetPC(cp);     // Set program counter
-   if (*cp == '&') cp = SetBSS(cp);    // Set BSS counter
-   if (*cp == '.') cp = IsData(cp+1);  // Data
+   if (*cp ==  0 ) return;               // No code
+   if (*cp == '*') cp = SetPC(cp);       // Set program counter
+   if (*cp == '&') cp = SetBSS(cp);      // Set BSS counter
+   if (*cp == '.') cp = IsPseudo(cp+1);  // Pseudo Op with dot
+   if (*cp)        cp = IsPseudo(cp);    // Pseudo Op
    if (ForcedEnd) return;
    if (oc < 0) oc = IsInstruction(cp); // Check for mnemonic after label
-   if (oc >= 0)
-   {
-      if (Phase == 2 && oc == 0x60 && ModuleStart != UNDEF)
-      {
-         i = AddressIndex(ModuleStart);
-         if (i >= 0)
-         {
-            sprintf(LengthInfo,";Size%5d [%s]",
-               pc-ModuleStart+1,lab[i].Name);
-         }
-      }
-      GenerateCode(cp);
-   }
+   if (oc >= 0) GenerateCode(cp);
 }
 
 void Phase1Listing(void)
@@ -2886,6 +2919,7 @@ void Phase1(void)
 
    Phase = 1;
    ForcedEnd = 0;
+   strcpy(Scope,"Main");
    fgets(Line,sizeof(Line),sf);
    Eof = feof(sf);
    while (!Eof || IncludeLevel > 0)
@@ -2914,6 +2948,7 @@ void Phase2(void)
    Phase =  2;
    pc    = -1;
    ForcedEnd = 0;
+   strcpy(Scope,"Main");
    if (IfLevel)
    {
       printf("\n*** Error in conditional assembly ***\n");
@@ -3142,7 +3177,7 @@ int main(int argc, char *argv[])
 
    printf("\n");
    printf("*******************************************\n");
-   printf("* Bit Shift Assembler 28-Jul-2020         *\n");
+   printf("* Bit Shift Assembler 12-Aug-2020         *\n");
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
