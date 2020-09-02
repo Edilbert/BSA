@@ -686,6 +686,7 @@ int isym(char c)
 
 char *GetSymbol(char *p, char *s)
 {
+   char *dfs = s;
    if ((*p == '.' || *p == '_') && Scope[0]) // expand local symbol
    {
       strcpy(s,Scope);
@@ -694,6 +695,12 @@ char *GetSymbol(char *p, char *s)
    }
    if (*p == '_' || isalnum(*p)) while (isym(*p)) *s++ = *p++;
    *s = 0;
+   if (df)
+   {
+      fprintf(df,"GetSymbol:");
+      if (Scope[0]) fprintf(df,"Scope:[%s]",Scope);
+      fprintf(df,"%s\n",dfs);
+   }
    return p;
 }
 
@@ -1030,6 +1037,7 @@ char *DefineLabel(char *p, int *val, int Locked)
       exit(1);
    }
    p = GetSymbol(p,Label);
+   if (df) fprintf(df,"DefineLabel:%s\n",Label);
    if (*p == ':') ++p; // Ignore colon after label
    l = strlen(Label);
    p = SkipSpace(p);
@@ -1148,6 +1156,7 @@ void AddLabel(char *p)
       ErrorMsg("Too many labels (> %d)\n",MAXLAB);
       exit(1);
    }
+   if (df) fprintf(df,"AddLabel:%s\n",p);
    l = strlen(p);
    lab[Labels].Address = UNDEF;
    lab[Labels].Name = MallocOrDie(l+1);
@@ -2197,6 +2206,12 @@ char * SplitOperand(char *p)
             il = 2;
             oc = Gen[GenIndex].Opc[AM_Dpgx];
          }
+         else if (to == -1 && am == AM_Abso)
+         {
+            am = AM_Dpag;
+            il = 2;
+            oc = Gen[GenIndex].Opc[AM_Dpag];
+         }
          else oc = to;
       }
    }
@@ -2848,7 +2863,7 @@ void ParseLine(char *cp)
    }
    if (!Strncasecmp(cp,"MODULE",6))    cp = ParseModule(cp+6);
    if (!Strncasecmp(cp,"ENDMOD",6))    cp = ParseEndMod(cp+6);
-   if (isalpha(*cp))            // Macro, Label or mnemonic
+   if (*cp =='_' || isalpha(*cp)) // Macro, Label or mnemonic
    {
       if (!Strncasecmp(cp,"MACRO ",6))
       {
