@@ -2055,6 +2055,16 @@ int AddressMode(unsigned char *p)
    int mi = 0;
    int ii = 0;
 
+   // remove redundant pair of brackets
+
+   if (l > 1 && p[0] == '[' && p[l-1] == ']')
+   {
+      p[0]   = ' '; // remove [
+      p[l-1] = 0;   // remove ]
+      p      = (unsigned char*)SkipSpace((char *)p);
+      l      = strlen((const char *)p);
+   }
+
    // prefix character
 
    s = p[0];
@@ -2073,6 +2083,8 @@ int AddressMode(unsigned char *p)
    // outer character
 
    if (l > 0) o = toupper(p[l-1]);
+
+
    if (o != ')' && o != 'X' && o != 'Y' && o != 'Z') o = 0;
    else oi = l-1;
 
