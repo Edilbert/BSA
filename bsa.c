@@ -223,8 +223,9 @@ char *CPU_Name;
 #define AM_Absy  7
 #define AM_Indz  8
 #define AM_Rela  9
-#define AM_Bits 10
-#define AM_Impl 11
+#define AM_Relo 10
+#define AM_Bits 11
+#define AM_Impl 12
 
 
 // ***********************************
@@ -247,6 +248,7 @@ struct ImpStruct
    {"BIT",0,0x2c}, // SKIP 2 byte
    {"SEC",0,0x38},
    {"RTI",0,0x40},
+   {"ASR",0,0x43}, // ASR A
    {"PHA",0,0x48},
    {"LSR",0,0x4a}, // LSR A
    {"CLI",0,0x58},
@@ -413,11 +415,12 @@ struct GenStruct
    {"CPZ",C45,{0xd4,0xdc,  -1,  -1,  -1,0xc2,  -1,  -1,  -1}}, // 24
    {"LDZ",C45,{  -1,0xab,  -1,0xbb,  -1,0xa3,  -1,  -1,  -1}}, // 25
 
-   {"ASW",C45,{  -1,0xcb,  -1,  -1,  -1,  -1,  -1,  -1,  -1}}, // 26
-   {"ROW",C45,{  -1,0xeb,  -1,  -1,  -1,  -1,  -1,  -1,  -1}}, // 27
-   {"DEW",C45,{0xc3,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1}}, // 28
-   {"INW",C45,{0xe3,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1}}, // 29
-   {"PHW",C45,{  -1,0xfc,  -1,  -1,  -1,0xf4,  -1,  -1,  -1}}  // 30
+   {"ASR",C45,{0x44,  -1,0x54,  -1,  -1,  -1,  -1,  -1,  -1}},
+   {"ASW",C45,{  -1,0xcb,  -1,  -1,  -1,  -1,  -1,  -1,  -1}},
+   {"ROW",C45,{  -1,0xeb,  -1,  -1,  -1,  -1,  -1,  -1,  -1}},
+   {"DEW",C45,{0xc3,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1}},
+   {"INW",C45,{0xe3,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1}},
+   {"PHW",C45,{  -1,0xfc,  -1,  -1,  -1,0xf4,  -1,  -1,  -1}}
  };
 
 
@@ -860,6 +863,20 @@ int IsInstruction(char *p)
       }
    }
 
+   // Check for long branch instructions
+
+   if (CPU_Type == CPU_45GS02 && (*p == 'L' || *p == 'l'))
+   for (i=0 ; i < 8 ; ++i)
+   {
+      if (!Strncasecmp(p+1,Rel[i].Mne,3)) // match mnemonic
+      {
+         am  = AM_Relo;
+         Mne = Rel[i].Mne;
+         if (df) fprintf(df,"Long Rel:L%s %2.2x\n",Mne,Rel[i].Opc+3);
+         return Rel[i].Opc+3;
+      }
+   }
+
    // chacter after mnemonic must be zero or white space
 
    if (p[3] && !isspace(p[3])) return -1;
@@ -879,7 +896,7 @@ int IsInstruction(char *p)
       }
    }
 
-   // Check for branch instructions
+   // Check for short branch instructions
 
    for (i=0 ; i < RELS ; ++i)
    {
@@ -2460,6 +2477,21 @@ char *GenerateCode(char *p)
       }
    }
 
+   // long branches
+
+   else if (am == AM_Relo)
+   {
+      il = 3;
+      o = EvalOperand(p+4,&v,0);
+      if (v != UNDEF) v  -= (pc + 3);
+      if (Phase == 2 && v == UNDEF)
+      {
+         ErrorLine(p);
+         ErrorMsg("Branch to undefined label\n");
+         exit(1);
+      }
+   }
+
    // anything else
 
    else
@@ -2510,7 +2542,7 @@ char *GenerateCode(char *p)
          }
       }
    }
-   else if (am != AM_Impl && am != AM_Rela)
+   else if (am != AM_Impl && am != AM_Rela && am != AM_Relo)
    {
       ErrorLine(p);
       ErrorMsg("Operand missing\n");
