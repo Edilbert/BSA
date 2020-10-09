@@ -226,6 +226,8 @@ char *CPU_Name;
 #define AM_Relo 10
 #define AM_Bits 11
 #define AM_Impl 12
+#define AM_Indi 13
+#define AM_Quad 14
 
 
 // ***********************************
@@ -373,10 +375,12 @@ int JSRIndex;
 int BITIndex;
 int STYIndex;
 int PHWIndex;
+int NegNeg;
+int PreNop;
 
 struct GenStruct
 {
-   char Mne[4];       // Mnemonic
+   char Mne[5];       // Mnemonic
    int  CPU;          // CPU type
    int  Opc[9];       // Opcodes
 } Gen[] =
@@ -399,23 +403,23 @@ struct GenStruct
    {"ROR",  0,{0x66,0x6e,0x76,0x7e,  -1,  -1,  -1,  -1,  -1}}, // 11
    {"DEC",  0,{0xc6,0xce,0xd6,0xde,  -1,  -1,  -1,  -1,  -1}}, // 12
    {"INC",  0,{0xe6,0xee,0xf6,0xfe,  -1,  -1,  -1,  -1,  -1}}, // 13
+   {"ASR",C45,{0x44,  -1,0x54,  -1,  -1,  -1,  -1,  -1,  -1}}, // 14
+   {"BIT",  0,{0x24,0x2c,0x34,0x3c,  -1,0x89,  -1,  -1,  -1}}, // 15
 
-   {"BIT",  0,{0x24,0x2c,0x34,0x3c,  -1,0x89,  -1,  -1,  -1}}, // 14
-   {"JMP",  0,{  -1,0x4c,  -1,  -1,0x7c,  -1,  -1,  -1,0x6c}}, // 15
-   {"JSR",  0,{  -1,0x20,  -1,  -1,0x23,  -1,  -1,  -1,0x22}}, // 16
+   {"JMP",  0,{  -1,0x4c,  -1,  -1,0x7c,  -1,  -1,  -1,0x6c}}, // 16
+   {"JSR",  0,{  -1,0x20,  -1,  -1,0x23,  -1,  -1,  -1,0x22}}, // 17
 
-   {"CPX",  0,{0xe4,0xec,  -1,  -1,  -1,0xe0,  -1,  -1,  -1}}, // 17
-   {"CPY",  0,{0xc4,0xcc,  -1,  -1,  -1,0xc0,  -1,  -1,  -1}}, // 18
-   {"LDX",  0,{0xa6,0xae,  -1,  -1,  -1,0xa2,  -1,0xbe,  -1}}, // 19
-   {"LDY",  0,{0xa4,0xac,0xb4,0xbc,  -1,0xa0,  -1,  -1,  -1}}, // 20
-   {"STX",  0,{0x86,0x8e,  -1,  -1,  -1,  -1,  -1,0x9b,  -1}}, // 21
-   {"STY",  0,{0x84,0x8c,0x94,0x8b,  -1,  -1,  -1,  -1,  -1}}, // 22
+   {"CPX",  0,{0xe4,0xec,  -1,  -1,  -1,0xe0,  -1,  -1,  -1}}, // 18
+   {"CPY",  0,{0xc4,0xcc,  -1,  -1,  -1,0xc0,  -1,  -1,  -1}}, // 19
+   {"LDX",  0,{0xa6,0xae,  -1,  -1,  -1,0xa2,  -1,0xbe,  -1}}, // 20
+   {"LDY",  0,{0xa4,0xac,0xb4,0xbc,  -1,0xa0,  -1,  -1,  -1}}, // 21
+   {"STX",  0,{0x86,0x8e,  -1,  -1,  -1,  -1,  -1,0x9b,  -1}}, // 22
+   {"STY",  0,{0x84,0x8c,0x94,0x8b,  -1,  -1,  -1,  -1,  -1}}, // 23
 
-   {"STZ",  1,{0x64,0x9c,0x74,0x9e,  -1,  -1,  -1,  -1,  -1}}, // 23
-   {"CPZ",C45,{0xd4,0xdc,  -1,  -1,  -1,0xc2,  -1,  -1,  -1}}, // 24
-   {"LDZ",C45,{  -1,0xab,  -1,0xbb,  -1,0xa3,  -1,  -1,  -1}}, // 25
+   {"STZ",  1,{0x64,0x9c,0x74,0x9e,  -1,  -1,  -1,  -1,  -1}}, // 24
+   {"CPZ",C45,{0xd4,0xdc,  -1,  -1,  -1,0xc2,  -1,  -1,  -1}}, // 25
+   {"LDZ",C45,{  -1,0xab,  -1,0xbb,  -1,0xa3,  -1,  -1,  -1}}, // 26
 
-   {"ASR",C45,{0x44,  -1,0x54,  -1,  -1,  -1,  -1,  -1,  -1}},
    {"ASW",C45,{  -1,0xcb,  -1,  -1,  -1,  -1,  -1,  -1,  -1}},
    {"ROW",C45,{  -1,0xeb,  -1,  -1,  -1,  -1,  -1,  -1,  -1}},
    {"DEW",C45,{0xc3,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1}},
@@ -423,8 +427,45 @@ struct GenStruct
    {"PHW",C45,{  -1,0xfc,  -1,  -1,  -1,0xf4,  -1,  -1,  -1}}
  };
 
-
 #define GENS (sizeof(Gen) / sizeof(struct GenStruct))
+
+// menmonics for 45GS02 32 bit instructions with the Q register
+// the Q register is a combination of A,X,Y,Z
+// address modes are:
+// base page quad      LDQ  dp      8 bit address
+// absolute  quad      LDQ  nnnn   16 bit address
+// indirect  quad      LDQ  (dp)   16 bit address indirect
+// indirect  quad      LDQ  [dp]   32 bit address indirect
+
+// the opcodes are derived from the equivalent 6502 opcodes for A
+// the prefix for using Q instead of A is $4242 (NEG NEG)
+// for the 32 bit address mode is $4242ea (NEG NEG NOP)
+
+// The order of the following mnemonics MUST coincide with
+// the order of the equivalent 6502 mnemonic above
+
+char *MneQ[16] =
+{
+   "ORQ" , //  0
+   "ANDQ", //  1
+   "EORQ", //  2
+   "ADCQ", //  3
+   "STQ" , //  4
+   "LDQ" , //  5
+   "CMPQ", //  6
+   "SBCQ", //  7
+
+   "ASLQ", //  8
+   "ROLQ", //  9
+   "LSRQ", // 10
+   "RORQ", // 11
+   "DEQ" , // 12
+   "INQ" , // 13
+   "ASRQ", // 14
+   "BITQ"  // 15
+};
+
+
 
 struct IndStruct
 {
@@ -832,7 +873,7 @@ int OperandExists(char *p)
 
 int IsInstruction(char *p)
 {
-   unsigned int i;
+   unsigned int i,l;
 
    // Initialize
 
@@ -860,6 +901,20 @@ int IsInstruction(char *p)
          Mne = Bit[i].Mne;
          if (df) fprintf(df,"Bit:%s %2.2x\n",Mne,Bit[i].Opc);
          return Bit[i].Opc;
+      }
+   }
+
+   // Check Q mnemonics
+
+   if (CPU_Type == CPU_45GS02 && strlen(p) > 5)
+   for (i=0 ; i < 16 ; ++i)
+   {
+      l = strlen(MneQ[i]);
+      if (!Strncasecmp(p,MneQ[i],l) && isspace(p[l]))
+      {
+         Mne = MneQ[i];
+         GenIndex = i;
+         return 512+i;
       }
    }
 
@@ -1211,6 +1266,12 @@ char *EvalSymValue(char *p, int *v)
       {
          *v = lab[i].Address;
          SymRefs(i);
+         if (Phase == 2 && *v == UNDEF)
+         {
+            ErrorLine(p);
+            ErrorMsg("%s = UNDEFINED\n",lab[i].Name);
+            exit(1);
+         }
          return p;
       }
    }
@@ -1596,9 +1657,7 @@ char *EvalOperand(char *p, int *v, int prio)
       for (i=0 ; i < UNAOPS ; ++i)
       if (*p == unaop[i].op)
       {
-          if (df) fprintf(df,"op [%c] * = %4.4x\n", unaop[i].op,(unsigned int)pc);
           p = unaop[i].foo(p,v);
-          if (df) fprintf(df,"op [%c] v = %4.4x\n", unaop[i].op,(unsigned int)*v);
           break;
       }
    }
@@ -1632,6 +1691,10 @@ char *EvalOperand(char *p, int *v, int prio)
          {
             if ((o = binop[i].prio) <= prio) return p;
             p = EvalOperand(p+l,&w,o);
+            if (df)
+            {
+               fprintf(df,"BinOp %d %s %d\n",*v,binop[i].op,w);
+            }
             if (*v == UNDEF || w == UNDEF) *v = UNDEF;
             else *v = binop[i].foo(*v,w);
             break;
@@ -1641,6 +1704,9 @@ char *EvalOperand(char *p, int *v, int prio)
    return p;
 }
 
+// *************
+// ParseWordData
+// *************
 
 char *ParseWordData(char *p)
 {
@@ -1657,6 +1723,60 @@ char *ParseWordData(char *p)
       fprintf(lf," %2.2x %2.2x    %s\n",lo,hi,Line);
    }
    pc += 2;
+   return p;
+}
+
+
+// *************
+// ParseHex4Data
+// *************
+
+char *ParseHex4Data(char *p)
+{
+   int v;
+   char hbuf[10];
+
+   p = EvalOperand(p,&v,0);
+   if (Phase == 2)
+   {
+      sprintf(hbuf,"%4.4X",v & 0xffff);
+      ROM[pc  ] = hbuf[0];
+      ROM[pc+1] = hbuf[1];
+      ROM[pc+2] = hbuf[2];
+      ROM[pc+3] = hbuf[3];
+      PrintPC();
+      fprintf(lf," %2.2x %2.2x %2.2x  %s\n",
+              hbuf[0],hbuf[1],hbuf[2],Line);
+   }
+   pc += 4;
+   return p;
+}
+
+
+// *************
+// ParseDec4Data
+// *************
+
+char *ParseDec4Data(char *p)
+{
+   int v;
+   char hbuf[10];
+
+   if (df) fprintf(df,"Dec4:%s\n",p);
+   p = EvalOperand(p,&v,0);
+   if (df) fprintf(df,"Dec4:%d\n",v);
+   if (Phase == 2)
+   {
+      sprintf(hbuf,"%4d",v);
+      ROM[pc  ] = hbuf[0];
+      ROM[pc+1] = hbuf[1];
+      ROM[pc+2] = hbuf[2];
+      ROM[pc+3] = hbuf[3];
+      PrintPC();
+      fprintf(lf," %2.2x %2.2x %2.2x  %s\n",
+              hbuf[0],hbuf[1],hbuf[2],Line);
+   }
+   pc += 4;
    return p;
 }
 
@@ -2027,6 +2147,8 @@ char *ParseByteData(char *p, int Charset)
 char *IsPseudo(char *p)
 {
         if (!Strncasecmp(p,"WORD",4))    p = ParseWordData(p+4);
+   else if (!Strncasecmp(p,"HEX4",4))    p = ParseHex4Data(p+4);
+   else if (!Strncasecmp(p,"DEC4",4))    p = ParseDec4Data(p+4);
    else if (!Strncasecmp(p,"WOR",3))     p = ParseWordData(p+3);
    else if (!Strncasecmp(p,"BYTE",4))    p = ParseByteData(p+4,ASCII);
    else if (!Strncasecmp(p,"BYT",3))     p = ParseByteData(p+3,ASCII);
@@ -2073,6 +2195,7 @@ int AddressMode(unsigned char *p)
    int ii = 0;
 
    // remove redundant pair of brackets
+   // or identify Q operation with 32 bit address
 
    if (l > 1 && p[0] == '[' && p[l-1] == ']')
    {
@@ -2080,6 +2203,11 @@ int AddressMode(unsigned char *p)
       p[l-1] = 0;   // remove ]
       p      = (unsigned char*)SkipSpace((char *)p);
       l      = strlen((const char *)p);
+      if (oc > 511)
+      {
+         il = 5;
+         return AM_Indz; // Q instruction
+      }
    }
 
    // prefix character
@@ -2222,7 +2350,36 @@ char * SplitOperand(char *p)
    Operand[l] = 0; // end marker
    while (l && isspace(Operand[l-1])) Operand[--l] = 0;
 
-   if (oc > 255)
+   // valid address mode for Q instructions are:
+
+   // AM_Dpag  base page
+   // AM_Abso  absolute
+   // AM_      indirect
+   // AM_Indz  indirect 32 bit
+
+   if (oc > 511) // Q mnemonics
+   {
+      am = AddressMode(Operand);
+      if (am == AM_Abso)
+      {
+         oc = Gen[GenIndex].Opc[am];
+         il = 5;
+      }
+      else if (am == AM_Indz)
+      {
+         oc = Gen[GenIndex].Opc[am];
+         if (il == 3) il = 4;
+      }
+      else
+      {
+         ++ErrNum;
+         ErrorLine(p);
+         ErrorMsg("illegal address mode\n");
+         exit(1);
+      }
+   }
+
+   else if (oc > 255)
    {
       am = AddressMode(Operand);
       if (df) fprintf(df,"AMOC: %s %d\n",Gen[GenIndex].Mne,am);
@@ -2284,6 +2441,9 @@ void CPU_Error(void)
 
 void AdjustOpcode(int *v)
 {
+   NegNeg = 0;
+   PreNop = 0;
+
    // JMP
 
    if (GenIndex == JMPIndex)
@@ -2333,6 +2493,39 @@ void AdjustOpcode(int *v)
    {
       *v = (*v << 8) | oc;
       oc = 0xea;   // NOP   (DP),Z
+      return;
+   }
+
+   // MEGA65 direct page quad
+
+   if (am == AM_Dpag && il == 4)
+   {
+      NegNeg = 1;
+      return;
+   }
+
+   // MEGA65 absolute quad
+
+   if (am == AM_Abso && il == 5)
+   {
+      NegNeg = 1;
+      return;
+   }
+
+   // MEGA65 16 bit indirect quad
+
+   if (am == AM_Indz && il == 4)
+   {
+      NegNeg = 1;
+      return;
+   }
+
+   // MEGA65 32 bit indirect quad
+
+   if (am == AM_Indz && il == 5)
+   {
+      NegNeg = 1;
+      PreNop = 1;
       return;
    }
 }
@@ -2432,11 +2625,14 @@ int CheckCondition(char *p)
 
 char *GenerateCode(char *p)
 {
-   int v,lo,hi;
+   int v,lo,hi,pl;
    char *o;
+   char *li;
 
    // initialize
 
+   pl = pc;
+   li = Line;
    v = 0;
    o = (char *)Operand;
 
@@ -2511,7 +2707,7 @@ char *GenerateCode(char *p)
       o = EvalOperand((char *)Operand,&v,0);
       if (GenIndex != PHWIndex && am == AM_Imme && Phase == 2 &&
           (v < -128 || v > 255))
-         {
+      {
             ErrorLine(p);
             ErrorMsg("Immediate value out of range (%d)\n",v);
             exit(1);
@@ -2522,7 +2718,7 @@ char *GenerateCode(char *p)
          {
             am = AM_Dpag;
             oc = Gen[GenIndex].Opc[AM_Dpag];
-            il = 2;
+            --il;
          }
          else if (am == AM_Absx && Gen[GenIndex].Opc[AM_Dpgx] >= 0)
          {
@@ -2575,26 +2771,40 @@ char *GenerateCode(char *p)
 
       // insert binary code
 
-      ROM[pc] = oc;
-      if (il > 1) ROM[pc+1] = lo;
-      if (il > 2) ROM[pc+2] = hi;
+      if (NegNeg)
+      {
+         ROM[pl++] = 0x42;
+         ROM[pl++] = 0x42;
+      }
+      if (PreNop)
+      {
+         ROM[pl++] = 0xea;
+      }
+
+      ROM[pl++] = oc;
 
       PrintPC();
+      if (NegNeg) fprintf(lf," 42 42");
+      if (PreNop) fprintf(lf," ea");
       PrintOC();
-      if (il > 1) fprintf(lf," %2.2x",lo);
-      else        fprintf(lf,"   ");
-      if (il > 2) fprintf(lf," %2.2x",hi);
-      else        fprintf(lf,"   ");
-      fprintf(lf," %s",Line);
+      if (pl < pc+il)
+      {
+         ROM[pl++] = lo;
+         fprintf(lf," %2.2x",lo);
+      }
+      else if (il < 4) fprintf(lf,"   ");
+      if (pl < pc+il)
+      {
+         ROM[pl++] = hi;
+         fprintf(lf," %2.2x",hi);
+      }
+      else if (il < 4) fprintf(lf,"   "); fprintf(lf,"   ");
+      if (il > 3 && !strncmp(li,"   ",3)) li += 3;
+      if (il > 4 && !strncmp(li,"   ",3)) li += 3;
+      fprintf(lf," %s",li);
       if (LengthInfo[0]) fprintf(lf," %s",LengthInfo);
       fprintf(lf,"\n");
       LengthInfo[0] = 0;
-   }
-   if (il < 1 || il > 3)
-   {
-      ++ErrNum;
-      ErrorMsg("Wrong instruction length = %d\n",il);
-      il = 1;
    }
    if (pc+il > 0xffff)
    {
