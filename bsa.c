@@ -873,7 +873,7 @@ int OperandExists(char *p)
 
 int IsInstruction(char *p)
 {
-   unsigned int i,l;
+   unsigned int i,l,bn;
 
    // Initialize
 
@@ -898,9 +898,10 @@ int IsInstruction(char *p)
       &&  !(Bit[i].CPU & CPU_Type))    // match CPU
       {
          am  = AM_Bits;
+         bn  = p[3] & 7;
          Mne = Bit[i].Mne;
-         if (df) fprintf(df,"Bit:%s %2.2x\n",Mne,Bit[i].Opc);
-         return Bit[i].Opc;
+         if (df) fprintf(df,"Bit:%s %2.2x\n",Mne,Bit[i].Opc|(bn << 4));
+         return Bit[i].Opc | (bn << 4);
       }
    }
 
@@ -2652,6 +2653,52 @@ char *GenerateCode(char *p)
       p += 3;              // skip mnemonic
    }
 
+   // test & branch  BBRn dp,label
+
+   else if (am == AM_Bits)
+   {
+      il = 3;  // opcode + dp address + branch
+
+      // get direct page address to test
+
+      o = EvalOperand(p+4,&lo,0);
+      if (Phase == 2 && (lo < -128 || lo > 127))
+      {
+         ErrorLine(p+4);
+         ErrorMsg("Illegal test argument (%d)\n",lo);
+         exit(1);
+      }
+
+      // check if comma separator is present
+
+      o = SkipSpace(o);
+      if (*o != ',' )
+      {
+         ErrorLine(o);
+         ErrorMsg("Need two arguments\n");
+         exit(1);
+      }
+
+      // get branch target
+
+      o = EvalOperand(o+1,&hi,0);
+      if (hi != UNDEF)  hi -= (pc + 3);
+      if (Phase == 2 && hi == UNDEF)
+      {
+         ErrorLine(p);
+         ErrorMsg("Branch to undefined label\n");
+         exit(1);
+      }
+      if (Phase == 2 && (hi < -128 || hi > 127))
+      {
+         ErrorLine(p);
+         ErrorMsg("Branch too long (%d)\n",hi);
+         exit(1);
+      }
+      if (lo != UNDEF && hi != UNDEF) v = lo | (hi << 8);
+      else v = UNDEF;
+   }
+
    // branches
 
    else if (am == AM_Rela)
@@ -2738,7 +2785,7 @@ char *GenerateCode(char *p)
          }
       }
    }
-   else if (am != AM_Impl && am != AM_Rela && am != AM_Relo)
+   else if (am != AM_Impl && am != AM_Rela && am != AM_Relo && am != AM_Bits)
    {
       ErrorLine(p);
       ErrorMsg("Operand missing\n");
