@@ -897,11 +897,22 @@ int IsInstruction(char *p)
       if (!Strncasecmp(p,Bit[i].Mne,3) // match mnemonic
       &&  !(Bit[i].CPU & CPU_Type))    // match CPU
       {
-         am  = AM_Bits;
-         bn  = p[3] & 7;
-         Mne = Bit[i].Mne;
-         if (df) fprintf(df,"Bit:%s %2.2x\n",Mne,Bit[i].Opc|(bn << 4));
-         return Bit[i].Opc | (bn << 4);
+         if (i > 1) // BBR & BBS
+         {
+            am  = AM_Bits;
+            bn  = p[3] & 7;
+            Mne = Bit[i].Mne;
+            if (df) fprintf(df,"BBR/BBS:%s %2.2x\n",Mne,Bit[i].Opc|(bn << 4));
+            return Bit[i].Opc | (bn << 4);
+         }
+         else  // RMB & SMB
+         {
+            am  = AM_Dpag;
+            bn  = p[3] & 7;
+            Mne = Bit[i].Mne;
+            if (df) fprintf(df,"RMB/SMB:%s %2.2x\n",Mne,Bit[i].Opc|(bn << 4));
+            return Bit[i].Opc | (bn << 4);
+         }
       }
    }
 
@@ -2336,7 +2347,7 @@ char * SplitOperand(char *p)
    il      =    3; // default instruction length
    inquo   =    0; // inside quotes
    inapo   =    0; // inside apostrophes
-   am   = AM_Abso; // default address mode
+   if (am != AM_Dpag) am = AM_Abso; // default address mode
 
    // Extract operand
 
@@ -2643,7 +2654,7 @@ char *GenerateCode(char *p)
       ErrorMsg("Undefined program counter (PC)\n");
       exit(1);
    }
-   if (df) fprintf(df,"GenerateCode %4.4X %s\n",pc,p);
+   if (df) fprintf(df,"GenerateCode %4.4X %d %s\n",pc,am,p);
 
    // implied instruction (no operand or implied A register)
 
@@ -2759,6 +2770,17 @@ char *GenerateCode(char *p)
             ErrorMsg("Immediate value out of range (%d)\n",v);
             exit(1);
       }
+      else if (am == AM_Dpag)
+      {
+         if (df) fprintf(df,"DPAG:%s\n",Line);
+         il = 2;
+         if (v < -128 || v > 255)
+         {
+            ErrorLine(p);
+            ErrorMsg("Immediate value out of range (%d)\n",v);
+            exit(1);
+         }
+      }
       else if (v >= 0 && v < 256 && GenIndex >= 0)
       {
          if (am == AM_Abso && Gen[GenIndex].Opc[AM_Dpag] >= 0)
@@ -2845,7 +2867,7 @@ char *GenerateCode(char *p)
          ROM[pl++] = hi;
          fprintf(lf," %2.2x",hi);
       }
-      else if (il < 4) fprintf(lf,"   "); fprintf(lf,"   ");
+      else if (il < 4) fprintf(lf,"   ");
       if (il > 3 && !strncmp(li,"   ",3)) li += 3;
       if (il > 4 && !strncmp(li,"   ",3)) li += 3;
       fprintf(lf," %s",li);
