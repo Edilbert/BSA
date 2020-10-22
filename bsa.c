@@ -2737,7 +2737,7 @@ char *GenerateCode(char *p)
    {
       il = 3;
       o = EvalOperand(p+4,&v,0);
-      if (v != UNDEF) v  -= (pc + 3);
+      if (v != UNDEF) v  -= (pc + 2);
       if (Phase == 2 && v == UNDEF)
       {
          ErrorLine(p);
