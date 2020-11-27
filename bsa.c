@@ -933,7 +933,7 @@ int IsInstruction(char *p)
    // Check for long branch instructions
 
    if (CPU_Type == CPU_45GS02 && (*p == 'L' || *p == 'l'))
-   for (i=0 ; i < 8 ; ++i)
+   for (i=0 ; i < 9 ; ++i)
    {
       if (!Strncasecmp(p+1,Rel[i].Mne,3)) // match mnemonic
       {
@@ -942,6 +942,15 @@ int IsInstruction(char *p)
          if (df) fprintf(df,"Long Rel:L%s %2.2x\n",Mne,Rel[i].Opc+3);
          return Rel[i].Opc+3;
       }
+   }
+
+   // Check for long branch BSR
+
+   if (CPU_Type == CPU_45GS02 && !Strncasecmp(p,"BSR",3))
+   {
+      am  = AM_Relo;
+      Mne = Rel[10].Mne;
+      return 0x63;
    }
 
    // chacter after mnemonic must be zero or white space
@@ -2040,6 +2049,8 @@ char *ParseASCII(char *p, unsigned char b[], int *l)
          ++p;
               if (*p == 'r') b[*l] = 13;
          else if (*p == 'n') b[*l] = 10;
+         else if (*p == 'a') b[*l] =  7;
+         else if (*p == 'e') b[*l] = 27;
          else if (*p == '0') b[*l] =  0;
          else b[*l] = *p;
          ++(*l);
@@ -2072,12 +2083,18 @@ char *ParseByteData(char *p, int Charset)
       Delimiter = *p;
       if (Delimiter == '<' && p[1] == '"' && p[5] == '"') // Packed ASCII
       {
+//       if (CPU_Type == CPU_45GS02)
+//       ByteBuffer[0] = ((p[3] - 64) << 5) | ((p[4] - 64)     );
+//       else
          ByteBuffer[0] = ((p[3] - 63) << 6) | ((p[4] - 63) << 1);
          l  = 1;
          p += 6;
       }
       else if (Delimiter == '>' && p[1] == '"' && p[5] == '"') // Packed ASCII
       {
+//       if (CPU_Type == CPU_45GS02)
+//       ByteBuffer[0] = ((p[2] - 64) << 2) | ((p[3] - 64) >> 3);
+//       else
          ByteBuffer[0] = ((p[2] - 63) << 3) | ((p[3] - 63) >> 2);
          l  = 1;
          p += 6;
@@ -2673,10 +2690,10 @@ char *GenerateCode(char *p)
       // get direct page address to test
 
       o = EvalOperand(p+4,&lo,0);
-      if (Phase == 2 && (lo < -128 || lo > 127))
+      if (Phase == 2 && (lo < 0 || lo > 255))
       {
          ErrorLine(p+4);
-         ErrorMsg("Illegal test argument (%d)\n",lo);
+         ErrorMsg("Need direct page address, read (%d)\n",lo);
          exit(1);
       }
 
@@ -2708,6 +2725,7 @@ char *GenerateCode(char *p)
       }
       if (lo != UNDEF && hi != UNDEF) v = lo | (hi << 8);
       else v = UNDEF;
+      hi &= 0xff;
    }
 
    // branches
@@ -2737,7 +2755,7 @@ char *GenerateCode(char *p)
    {
       il = 3;
       o = EvalOperand(p+4,&v,0);
-      if (v != UNDEF) v  -= (pc + 2);
+      if (v != UNDEF) v = (v - pc - 2) & 0xffff;
       if (Phase == 2 && v == UNDEF)
       {
          ErrorLine(p);
@@ -2859,13 +2877,13 @@ char *GenerateCode(char *p)
       if (pl < pc+il)
       {
          ROM[pl++] = lo;
-         fprintf(lf," %2.2x",lo);
+         fprintf(lf," %2.2x",lo&0xff);
       }
       else if (il < 4) fprintf(lf,"   ");
       if (pl < pc+il)
       {
          ROM[pl++] = hi;
-         fprintf(lf," %2.2x",hi);
+         fprintf(lf," %2.2x",hi&0xff);
       }
       else if (il < 4) fprintf(lf,"   ");
       if (il > 3 && !strncmp(li,"   ",3)) li += 3;
