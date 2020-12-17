@@ -4,7 +4,7 @@
 Bit Shift Assembler
 *******************
 
-Version: 12-Aug-2020
+Version: 10-Dec-2020
 
 The assembler was developed and tested on a MAC with OS Catalina.
 Using no specific options of the host system, it should run on any
@@ -209,8 +209,8 @@ char *CPU_Names[CPU_NAMES] =
    "65816"    // Apple IIgs, C256 Foenix
 };
 
-int   CPU_Type;
-char *CPU_Name;
+int   CPU_Type = CPU_6502;
+char *CPU_Name = "6502";
 
 #define AM_None -1
 #define AM_Dpag  0
@@ -424,7 +424,9 @@ struct GenStruct
    {"ROW",C45,{  -1,0xeb,  -1,  -1,  -1,  -1,  -1,  -1,  -1}},
    {"DEW",C45,{0xc3,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1}},
    {"INW",C45,{0xe3,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1}},
-   {"PHW",C45,{  -1,0xfc,  -1,  -1,  -1,0xf4,  -1,  -1,  -1}}
+   {"PHW",C45,{  -1,0xfc,  -1,  -1,  -1,0xf4,  -1,  -1,  -1}},
+   {"TSB",C45,{0x04,0x0c,  -1,  -1,  -1,  -1,  -1,  -1,  -1}},
+   {"TRB",C45,{0x14,0x1c,  -1,  -1,  -1,  -1,  -1,  -1,  -1}}
  };
 
 #define GENS (sizeof(Gen) / sizeof(struct GenStruct))
@@ -625,9 +627,10 @@ int IgnoreCase;   // 1: Ignore case for symbols
 
 // Filenames
 
-char *Src;
+char  Src[256];
 char  Lst[256];
 char  Pre[256];
+char  Ext[5];
 
 int GenStart = 0x10000 ; // Lowest assemble address
 int GenEnd   =       0 ; //Highest assemble address
@@ -891,7 +894,7 @@ int IsInstruction(char *p)
 
    // Check 4 character mnemonics
 
-   if (strlen(p) > 5 && p[3] >= '0' && p[3] <= '7' && isspace(p[4]))
+   if (strlen(p) > 3 && p[3] >= '0' && p[3] <= '7' && p[4] <= 0x20)
    for (i=0 ; i < BITS ; ++i)
    {
       if (!Strncasecmp(p,Bit[i].Mne,3) // match mnemonic
@@ -3480,7 +3483,7 @@ const char *Stat(int o)
 
 int main(int argc, char *argv[])
 {
-   int ic,v;
+   int ic,v,l;
 
    for (ic=1 ; ic < argc ; ++ic)
    {
@@ -3492,12 +3495,7 @@ int main(int argc, char *argv[])
       else if (!strncmp(argv[ic],"-D",2)) DefineLabel(argv[ic]+2,&v,1);
       else if (argv[ic][0] >= '0' || argv[ic][0] == '.')
       {
-         if (!Src)
-         {
-              Src = MallocOrDie(strlen(argv[ic]) + 4 + 1);
-              strcpy(Src,argv[ic]);
-         }
-         else if (!Lst[0]) strcpy(Lst,argv[ic]);
+         if (!Src[0]) strncpy(Src,argv[ic],sizeof(Src)-1);
       }
       else
       {
@@ -3505,7 +3503,7 @@ int main(int argc, char *argv[])
          exit(1);
       }
    }
-   if (!Src)
+   if (!Src[0])
    {
       printf("*** missing filename for assembler source file ***\n");
       printf("\nUsage: bsa [-d -D -i -n -x] <source> [<list>]\n");
@@ -3518,22 +3516,31 @@ int main(int argc, char *argv[])
       exit(1);
    }
 
-   // default file names if only source file specified:
-   // prog.asm   prog   prog.lst
+   // split filename
+
+   strcpy(Ext,".asm");
+   l = strlen(Src);
+   if (l > 4 && Src[l-4] == '.')
+   {
+      strcpy(Ext,Src+l-4);
+      Src[l-4] = 0;
+   }
+
+   if (!strcmp(Ext,".src")) // assume source code for MEGA65
+   {
+      CPU_Type = CPU_45GS02;
+      CPU_Name = CPU_Names[3];
+   }
 
    strcpy(Pre,Src);
+   strcpy(Lst,Src);
    strcat(Pre,".pp");
-   if (!Lst[0]) strcpy(Lst,Src);
-   if (!(strlen(Src) > 4 && !Strcasecmp(Src+strlen(Src)-4,".asm")))
-       strcat(Src,".asm");
-   if ( (strlen(Lst) > 4 && !Strcasecmp(Lst+strlen(Lst)-4,".asm")))
-       Lst[strlen(Lst)-4] = 0;
-   if (!(strlen(Lst) > 4 && !Strcasecmp(Lst+strlen(Lst)-4,".lst")))
-       strcat(Lst,".lst");
+   strcat(Src,Ext);
+   strcat(Lst,".lst");
 
    printf("\n");
    printf("*******************************************\n");
-   printf("* Bit Shift Assembler 12-Aug-2020         *\n");
+   printf("* Bit Shift Assembler 10-Dec-2020         *\n");
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
@@ -3553,8 +3560,6 @@ int main(int argc, char *argv[])
    if (Debug) df = fopen("Debug.lst","w");
    if (Preprocess) pf = fopen(Pre,"w");
 
-   CPU_Type = CPU_6502;
-   CPU_Name = CPU_Names[0];
    JMPIndex = GetIndex("JMP");
    JSRIndex = GetIndex("JSR");
    BITIndex = GetIndex("BIT");
