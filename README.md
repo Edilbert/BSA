@@ -13,3 +13,12 @@ A full documentation will be added later.
 
 A cross-assembler for hosts running MAC OSX, Linux or Windows
 
+The executable file "bsa" in this repository is compiled for MAC.
+
+Windows and Linux users have to download the source code "bsa.c"
+and compile it with a standard C compiler. gcc for Linux
+or Visual C for Windows should do the job.
+
+The bsa assembler is a command line program.
+There is no GUI.
+
