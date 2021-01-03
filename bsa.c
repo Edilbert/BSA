@@ -2219,6 +2219,11 @@ char *ParseASCII(char *p, unsigned char b[], int *l)
       b[(*l)-1] |= 0x80; // Set bit 7 of last char
       ++p;
    }
+   if (!strncmp(p,"+$80",4))
+   {
+      b[(*l)-1] |= 0x80; // Set bit 7 of last char
+      p += 4;
+   }
    return p;
 }
 
