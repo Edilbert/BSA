@@ -4,7 +4,7 @@
 Bit Shift Assembler
 *******************
 
-Version: 10-Dec-2020
+Version: 02-Jan-2021
 
 The assembler was developed and tested on a MAC with OS Catalina.
 Using no specific options of the host system, it should run on any
@@ -588,6 +588,7 @@ void *ReallocOrDie(void *ptr, size_t size)
 
 #define UNDEF 0xff0000
 
+int BranchOpt;      // Branch optimisation
 int SkipHex;        // Switch on with -x
 int Debug;          // Switch on with -d
 int LiNo;           // Line number of current file
@@ -609,12 +610,17 @@ char *MacroPointer;
 
 const char *Mne;       // Current mnemonic
 
+int bp;      // base page
 int oc;      // op code
 int am;      // address mode
 int il;      // instruction length
 int pc = -1; // program counter
 int bss;     // bss counter
-int Phase;
+int Pass;
+#define MAXPASS 12
+int BOC[MAXPASS];       // branch opt count
+int MaxPass = MAXPASS;
+int BSO_Mode;
 int IfLevel;
 int Skipping;
 int SkipLine[10];
@@ -724,8 +730,29 @@ char *SkipSpace(char *p)
 
 int isym(char c)
 {
-   return (c == '_' || isalnum(c));
+   return (c == '_' || c == '$' || c == '.' || isalnum(c));
 }
+
+// *****
+// isnnd
+// *****
+
+int isnnd(char *p)
+{
+   char *dollar;
+
+   // check for labels of style nn$ used in the Commodore 65 sources
+   // to be compiled with the VAX BSO assembler
+
+   dollar = strchr(p,'$');
+   if (!dollar) return 0;
+   while (p < dollar)
+   {
+      if (!isdigit(*p++)) return 0;
+   }
+   return 1;
+}
+
 
 // *********
 // GetSymbol
@@ -733,21 +760,53 @@ int isym(char c)
 
 char *GetSymbol(char *p, char *s)
 {
-   char *dfs = s;
-   if ((*p == '.' || *p == '_') && Scope[0]) // expand local symbol
+   // char *dfs = s;
+
+
+   // expand BSO local symbols like 40$ to Label_40$
+
+   if (isnnd(p))
    {
-      strcpy(s,Scope);
-      s += strlen(s);
-      *s++ = *p++;
+      if (Scope[0])
+      {
+         strcpy(s,Scope);
+         s += strlen(s);
+         *s++ = '_';
+      }
+      do *s++ = *p;
+      while (*p++ != '$');
+      *s = 0;
+      return p;
    }
-   if (*p == '_' || isalnum(*p)) while (isym(*p)) *s++ = *p++;
+
+   // check for local symbols inside modules
+
+   if (!BSO_Mode && (*p == '.' || *p == '_') && Scope[0]) // expand local symbol
+   {
+      strcpy(s,Scope);  // module name
+      s += strlen(s);   // advance pointer after module name
+      *s++ = *p++;      // copy local identifier
+   }
+
+   // copy alphanumeric characters to symbol
+
+   if (*p == '_' || *p == '$' || *p == '.' || isalnum(*p))
+      while (isym(*p)) *s++ = *p++;
+
+   // terminate string
+
    *s = 0;
+
+   // debug output
+
+/*
    if (df)
    {
       fprintf(df,"GetSymbol:");
       if (Scope[0]) fprintf(df,"Scope:[%s]",Scope);
       fprintf(df,"%s\n",dfs);
    }
+*/
    return p;
 }
 
@@ -813,7 +872,7 @@ void ErrorMsg(const char *format, ...)
 
 void PrintLiNo(int Blank)
 {
-   if (Phase < 2) return;
+   if (Pass < MaxPass) return;
    if (WithLiNo)
    {
       fprintf(lf,"%5d",LiNo);
@@ -824,7 +883,7 @@ void PrintLiNo(int Blank)
 
 void PrintPC(void)
 {
-   if (Phase < 2) return;
+   if (Pass < MaxPass) return;
    if (WithLiNo) PrintLiNo(1);
    fprintf(lf,"%4.4x",pc);
 }
@@ -845,14 +904,14 @@ void PrintOC(void)
 
 void PrintLine(void)
 {
-   if (Phase < 2) return;
+   if (Pass < MaxPass) return;
    PrintLiNo(1);
    fprintf(lf,"              %s\n",Line);
 }
 
 void PrintPCLine(void)
 {
-   if (Phase < 2) return;
+   if (Pass < MaxPass) return;
    PrintPC();
    fprintf(lf,"          %s\n",Line);
 }
@@ -1064,7 +1123,7 @@ char *SetBSS(char *p)
    }
    p = EvalOperand(p+1,&bss,0);
    if (df) fprintf(df,"BSS = %4.4x\n",bss);
-   if (Phase == 2)
+   if (Pass == MaxPass)
    {
       PrintLiNo(1);
       fprintf(lf,"%4.4x          %s\n",bss,Line);
@@ -1133,6 +1192,12 @@ char *DefineLabel(char *p, int *val, int Locked)
       exit(1);
    }
    p = GetSymbol(p,Label);
+
+   // in BSO mode use scope
+
+   if (BSO_Mode && isalpha(Label[0]) && !strncmp(Label,Line,strlen(Label)))
+      strcpy(Scope,Label);
+
    if (df) fprintf(df,"DefineLabel:%s\n",Label);
    if (*p == ':') ++p; // Ignore colon after label
    l = strlen(Label);
@@ -1156,21 +1221,25 @@ char *DefineLabel(char *p, int *val, int Locked)
       if (lab[j].Address == UNDEF) lab[j].Address = v;
       else if (lab[j].Address != v && !lab[j].Locked)
       {
-         ++ErrNum;
-         ErrorLine(p);
-         ErrorMsg("*Multiple assignments for label [%s]\n"
-                  "1st. value = $%4.4x   2nd. value = $%4.4x\n",
-                  Label, lab[j].Address, v);
-         exit(1);
+         if (Pass < MaxPass) lab[j].Address = v;
+         else
+         {
+            ++ErrNum;
+            ErrorLine(p);
+            ErrorMsg("*Multiple assignments for label [%s]\n"
+                     "1st. value = $%4.4x   2nd. value = $%4.4x\n",
+                     Label, lab[j].Address, v);
+            exit(1);
+         }
       }
       *val = v;
       if (Locked) lab[j].Locked = Locked;
       if (df)
       {
          if (lab[j].Address == UNDEF)
-            fprintf(df,"P%d:%s = UNDEFINED\n",Phase,lab[j].Name);
+            fprintf(df,"P%d:%s = UNDEFINED\n",Pass,lab[j].Name);
          else
-            fprintf(df,"P%d:%s = $%4.4x\n",Phase,lab[j].Name,lab[j].Address);
+            fprintf(df,"P%d:%s = $%4.4x\n",Pass,lab[j].Name,lab[j].Address);
       }
    }
    else if (!Strncasecmp(p,".BSS",4))
@@ -1218,26 +1287,34 @@ char *DefineLabel(char *p, int *val, int Locked)
       else if (lab[j].Address == UNDEF) lab[j].Address = pc;
       else if (lab[j].Address != pc && !lab[j].Locked)
       {
-         ++ErrNum;
-         if (Phase == 1)
+         if (Pass == 1)
          {
+            ++ErrNum;
             ErrorMsg("Multiple label definition [%s]"
                      " value 1: %4.4x   value 2: %4.4x\n",
                      Label, lab[j].Address,pc);
+            exit(1);
+         }
+         else if (Pass < MaxPass)
+         {
+            if (df) fprintf(df,"Change %d:%4.4x -> %4.4x %s\n",
+               Pass,lab[j].Address,pc,Label);
+            lab[j].Address = pc;
+            ++BOC[Pass-1]; // branch optimisation count
          }
          else
          {
             ErrorMsg("Phase error label [%s]"
-                     " phase 1: %4.4x   phase 2: %4.4x\n",
-                     Label,lab[j].Address,pc);
+                     " pass %d: %4.4x   pass %d: %4.4x\n",
+                     Label,Pass-1,lab[j].Address,Pass,pc);
+            exit(1);
          }
-         exit(1);
       }
       if (!lab[j].Locked) *val = pc;
       lab[j].Ref[0] = LiNo;
       lab[j].Att[0] = LPOS;
    }
-   if (df) fprintf(df,"P%d: {%s}=$%4.4x\n",Phase,lab[j].Name,lab[j].Address);
+   if (df) fprintf(df,"P%d: {%s}=$%4.4x\n",Pass,lab[j].Name,lab[j].Address);
    return p;
 }
 
@@ -1269,7 +1346,7 @@ void SymRefs(int i)
 {
    int n;
 
-   if (Phase != 2) return;
+   if (Pass != MaxPass) return;
    n = ++lab[i].NumRef;
    lab[i].Ref = ReallocOrDie(lab[i].Ref,(n+1)*sizeof(int));
    lab[i].Ref[n] = LiNo;
@@ -1277,6 +1354,10 @@ void SymRefs(int i)
    lab[i].Att[n] = am;
 }
 
+
+// ************
+// EvalSymValue
+// ************
 
 char *EvalSymValue(char *p, int *v)
 {
@@ -1290,7 +1371,7 @@ char *EvalSymValue(char *p, int *v)
       {
          *v = lab[i].Address;
          SymRefs(i);
-         if (Phase == 2 && *v == UNDEF)
+         if (Pass == MaxPass && *v == UNDEF)
          {
             ErrorLine(p);
             ErrorMsg("%s = UNDEFINED\n",lab[i].Name);
@@ -1304,6 +1385,9 @@ char *EvalSymValue(char *p, int *v)
    return p;
 }
 
+// ************
+// EvalSymBytes
+// ************
 
 char *EvalSymBytes(char *p, int *v)
 {
@@ -1351,7 +1435,7 @@ char *ParseLongData(char *p, int l)
          w >>= 8;
       }
    }
-   if (Phase == 2)
+   if (Pass == MaxPass)
    {
       for (i=0 ; i < l ; ++i) ROM[pc+i] = Operand[i];
       PrintPC();
@@ -1447,7 +1531,7 @@ char *ParseRealData(char *p)
       }
    }
 
-   if (Phase == 2)
+   if (Pass == MaxPass)
    {
       for (i=0 ; i < mansize+1 ; ++i) ROM[pc+i] = Operand[i];
       PrintPC();
@@ -1506,6 +1590,16 @@ char *EvalHexValue(char *p, int *v)
 {
    unsigned int w;
    sscanf(p,"%x",&w);
+   while (isxdigit(*p)) ++p;
+   *v = w;
+   return p;
+}
+
+
+char *EvalOctValue(char *p, int *v)
+{
+   unsigned int w;
+   sscanf(p,"%o",&w);
    while (isxdigit(*p)) ++p;
    *v = w;
    return p;
@@ -1571,6 +1665,7 @@ char *op_hig(char *p, int *v)
 
 char *op_prc(char *p, int *v) { *v = pc; return p+1;}
 char *op_hex(char *p, int *v) { return EvalHexValue(p+1,v) ;}
+char *op_oct(char *p, int *v) { return EvalOctValue(p+1,v) ;}
 char *op_cha(char *p, int *v) { return EvalCharValue(p+1,v);}
 char *op_bin(char *p, int *v) { return EvalBinValue(p+1,v) ;}
 char *op_len(char *p, int *v) { return EvalSymBytes(p+1,v) ;}
@@ -1581,7 +1676,7 @@ struct unaop_struct
    char *(*foo)(char*,int*);
 };
 
-#define UNAOPS 13
+#define UNAOPS 14
 
 // table of unary operators in C style
 
@@ -1598,6 +1693,7 @@ struct unaop_struct unaop[UNAOPS] =
    {'*',&op_prc}, // program counter
    {'$',&op_hex}, // hex constant
    { 39,&op_cha}, // char constant
+   {'@',&op_oct}, // octal constant
    {'%',&op_bin}, // binary constant
    {'?',&op_len}  // length of .BYTE data line
 };
@@ -1676,7 +1772,7 @@ char *EvalOperand(char *p, int *v, int prio)
    // Start parsing unary operators
    // < > * have special 6502 meanings
 
-   if (*p && strchr("[(+-!~<>*$'%?",*p))
+   if (*p && strchr("[(+-!~<>*$'%?@",*p))
    {
       for (i=0 ; i < UNAOPS ; ++i)
       if (*p == unaop[i].op)
@@ -1685,8 +1781,8 @@ char *EvalOperand(char *p, int *v, int prio)
           break;
       }
    }
-   else if (isdigit(c)) p = EvalDecValue(p,v);    // decimal constant
-   else if (isym(c))    p = EvalSymValue(p,v);    // symbol or label
+   else if (isdigit(c) && !isnnd(p)) p = EvalDecValue(p,v);
+   else if (isym(c)    ||  isnnd(p)) p = EvalSymValue(p,v);
    else
    {
       ErrorLine(p);
@@ -1734,19 +1830,50 @@ char *EvalOperand(char *p, int *v, int prio)
 
 char *ParseWordData(char *p)
 {
-   int v,lo,hi;
+   int i,j,l,v;
+   unsigned char ByteBuffer[ML];
 
-   p = EvalOperand(p,&v,0);
-   if (Phase == 2)
+   l = 0;
+   while (*p && *p != ';') // Parse data line
    {
-      lo = v & 0xff;
-      hi = v >> 8;
-      ROM[pc  ] = lo;
-      ROM[pc+1] = hi;
-      PrintPC();
-      fprintf(lf," %2.2x %2.2x    %s\n",lo,hi,Line);
+      p = SkipSpace(p);
+      p = EvalOperand(p,&v,0);
+      if (v == UNDEF && Pass == MaxPass)
+      {
+         ErrorMsg("Undefined symbol in WORD data\n");
+         ErrorLine(p);
+         exit(1);
+      }
+      ByteBuffer[l++] = v & 0xff;
+      ByteBuffer[l++] = v >> 8;
+      p = SkipToComma(p);
+      if (*p == ',') ++p;
    }
-   pc += 2;
+   if (l < 1)
+   {
+      ErrorMsg("Missing WORD data\n");
+      ErrorLine(p);
+      exit(1);
+   }
+
+   j = AddressIndex(pc);
+   if (j >= 0)
+   for ( ; j < Labels ; ++j) // There may be multiple lables on this address
+   {
+       if (lab[j].Address == pc) lab[j].Bytes = l;
+   }
+
+   if (Pass == MaxPass)
+   {
+      PrintPC();
+      for (i=0 ; i < l ; ++i)
+      {
+         ROM[pc+i] = ByteBuffer[i];
+         if (i < 2) fprintf(lf," %2.2x",ByteBuffer[i]);
+      }
+      fprintf(lf,"    %s\n",Line);
+   }
+   pc += l;
    return p;
 }
 
@@ -1761,7 +1888,7 @@ char *ParseHex4Data(char *p)
    char hbuf[10];
 
    p = EvalOperand(p,&v,0);
-   if (Phase == 2)
+   if (Pass == MaxPass)
    {
       sprintf(hbuf,"%4.4X",v & 0xffff);
       ROM[pc  ] = hbuf[0];
@@ -1789,7 +1916,7 @@ char *ParseDec4Data(char *p)
    if (df) fprintf(df,"Dec4:%s\n",p);
    p = EvalOperand(p,&v,0);
    if (df) fprintf(df,"Dec4:%d\n",v);
-   if (Phase == 2)
+   if (Pass == MaxPass)
    {
       sprintf(hbuf,"%4d",v);
       ROM[pc  ] = hbuf[0];
@@ -1823,7 +1950,7 @@ char *ParseFillData(char *p)
    }
    p = EvalOperand(p+1,&v,0);
    v &= 0xff;
-   if (Phase == 2)
+   if (Pass == MaxPass)
    {
       for (i=0 ; i < m ; ++i) ROM[pc+i] = v;
       PrintPC();
@@ -1843,7 +1970,7 @@ void ListSizeInfo()
 {
    int i;
 
-   if (Phase == 2)
+   if (Pass == MaxPass)
    {
       PrintPC();
       fprintf(lf,"          %s",Line);
@@ -1915,7 +2042,7 @@ char *ParseStoreData(char *p)
    int Start,Length,i;
    char Filename[80];
 
-   if (Phase < 2) return p;
+   if (Pass < MaxPass) return p;
    p = EvalOperand(p,&Start,0);
    if (Start < 0 || Start > 0xffff)
    {
@@ -1975,13 +2102,30 @@ char *ParseBSSData(char *p)
       ErrorMsg("Illegal BSS size %d\n",m);
       exit(1);
    }
-   if (Phase == 2)
+   if (Pass == MaxPass)
    {
       PrintLiNo(1);
       fprintf(lf,"%4.4x             ",bss);
       fprintf(lf,"%s\n",Line);
    }
    bss += m;
+   return p;
+}
+
+
+char *ParseBaseData(char *p)
+{
+   p = EvalOperand(p,&bp,0);
+   if (bp < 0 || bp > 255)
+   {
+      ErrorMsg("Illegal base page value %d\n",bp);
+      exit(1);
+   }
+   if (Pass == MaxPass)
+   {
+      PrintLiNo(1);
+      fprintf(lf,"%s\n",Line);
+   }
    return p;
 }
 
@@ -2002,7 +2146,7 @@ char *ParseBitData(char *p)
          exit(1);
       }
    }
-   if (Phase == 2)
+   if (Pass == MaxPass)
    {
       PrintPC();
       ROM[pc] = v;
@@ -2029,7 +2173,7 @@ char *ParseLitData(char *p)
          exit(1);
       }
    }
-   if (Phase == 2)
+   if (Pass == MaxPass)
    {
       PrintPC();
       ROM[pc] = v;
@@ -2045,7 +2189,7 @@ char *ParseASCII(char *p, unsigned char b[], int *l)
    char Delimiter;
 
    Delimiter = *p++;
-   while (*p && *p != Delimiter && *l < ML-1)
+   while (*p && (*p != Delimiter || *(p+1) == *p) && *l < ML-1)
    {
       if (*p == '\\') // special character CR, LF, NULL
       {
@@ -2057,6 +2201,11 @@ char *ParseASCII(char *p, unsigned char b[], int *l)
          else if (*p == '0') b[*l] =  0;
          else b[*l] = *p;
          ++(*l);
+         ++p;
+      }
+      else if (*p == 0x27 && *(p+1) == 0x27) // ''
+      {
+         b[(*l)++] = *p++;
          ++p;
       }
       else
@@ -2076,8 +2225,8 @@ char *ParseASCII(char *p, unsigned char b[], int *l)
 char *ParseByteData(char *p, int Charset)
 {
    int i,j,l,v;
-   unsigned char ByteBuffer[ML];
    char Delimiter;
+   unsigned char ByteBuffer[ML];
 
    l = 0;
    while (*p && *p != ';') // Parse data line
@@ -2130,7 +2279,7 @@ char *ParseByteData(char *p, int Charset)
       else
       {
          p = EvalOperand(p,&v,0);
-         if (v == UNDEF && Phase == 2)
+         if (v == UNDEF && Pass == MaxPass)
          {
             ErrorMsg("Undefined symbol in BYTE data\n");
             ErrorLine(p);
@@ -2157,7 +2306,7 @@ char *ParseByteData(char *p, int Charset)
    }
    if (j >= 0 && df) fprintf(df,"Byte label [%s] $%4.4x $%4.4x %d bytes\n",
                    lab[j].Name,lab[j].Address,pc,l);
-   if (Phase == 2)
+   if (Pass == MaxPass)
    {
       PrintPC();
       for (i=0 ; i < l ; ++i)
@@ -2194,6 +2343,7 @@ char *IsPseudo(char *p)
    else if (!Strncasecmp(p,"BSS",3))     p = ParseBSSData(p+4);
    else if (!Strncasecmp(p,"STORE",5))   p = ParseStoreData(p+5);
    else if (!Strncasecmp(p,"CPU",3))     p = ParseCPUData(p+3);
+   else if (!Strncasecmp(p,"BASE",4))    p = ParseBaseData(p+4);
    else if (!Strncasecmp(p,"CASE",4))    p = ParseCaseData(p+4);
    else if (!Strncasecmp(p,"ORG",3))     p = SetPC(p);
    else if (!Strncasecmp(p,"LOAD",4))    WriteLA = 1;
@@ -2577,7 +2727,7 @@ int CheckCondition(char *p)
    r = 0;
    if (*p != '#') return 0; // No preprocessing
    p = SkipSpace(p+1);
-   if (!Strncasecmp(p,"error", 5) && (Phase == 1))
+   if (!Strncasecmp(p,"error", 5) && (Pass == 1))
    {
       CheckSkip();
       if (Skipping)
@@ -2612,7 +2762,7 @@ int CheckCondition(char *p)
          SkipLine[IfLevel] = v == UNDEF || v == 0;
       }
       CheckSkip();
-      if (Phase == 2)
+      if (Pass == MaxPass)
       {
          PrintLiNo(1);
          if (SkipLine[IfLevel])
@@ -2628,14 +2778,14 @@ int CheckCondition(char *p)
       SkipLine[IfLevel] = !SkipLine[IfLevel];
       CheckSkip();
       PrintLiNo(1);
-      if (Phase == 2) fprintf(lf,"              %s\n",Line);
+      if (Pass == MaxPass) fprintf(lf,"              %s\n",Line);
    }
    if (!Strncasecmp(p,"endif",5) && (p[5] == 0 || isspace(p[5])))
    {
       r = 1;
       IfLevel--;
       PrintLiNo(1);
-      if (Phase == 2) fprintf(lf,"              %s\n",Line);
+      if (Pass == MaxPass) fprintf(lf,"              %s\n",Line);
       if (IfLevel < 0)
       {
          ++ErrNum;
@@ -2657,7 +2807,7 @@ int CheckCondition(char *p)
 
 char *GenerateCode(char *p)
 {
-   int v,lo,hi,pl;
+   int v,w,lo,hi,pl;
    char *o;
    char *li;
 
@@ -2665,7 +2815,8 @@ char *GenerateCode(char *p)
 
    pl = pc;
    li = Line;
-   v = 0;
+   v = 0; // operand value
+   w = 0; // operand value - base value
    o = (char *)Operand;
 
    if (pc < 0)
@@ -2693,7 +2844,8 @@ char *GenerateCode(char *p)
       // get direct page address to test
 
       o = EvalOperand(p+4,&lo,0);
-      if (Phase == 2 && (lo < 0 || lo > 255))
+      lo -= (bp << 8);
+      if (Pass == MaxPass && (lo < 0 || lo > 255))
       {
          ErrorLine(p+4);
          ErrorMsg("Need direct page address, read (%d)\n",lo);
@@ -2714,13 +2866,13 @@ char *GenerateCode(char *p)
 
       o = EvalOperand(o+1,&hi,0);
       if (hi != UNDEF)  hi -= (pc + 3);
-      if (Phase == 2 && hi == UNDEF)
+      if (Pass == MaxPass && hi == UNDEF)
       {
          ErrorLine(p);
          ErrorMsg("Branch to undefined label\n");
          exit(1);
       }
-      if (Phase == 2 && (hi < -128 || hi > 127))
+      if (Pass == MaxPass && (hi < -128 || hi > 127))
       {
          ErrorLine(p);
          ErrorMsg("Branch too long (%d)\n",hi);
@@ -2731,20 +2883,67 @@ char *GenerateCode(char *p)
       hi &= 0xff;
    }
 
-   // branches
+   // automatic branch optimisation
+
+   else if (am == AM_Rela && BranchOpt && CPU_Type == CPU_45GS02)
+   {
+      il = 2; // default = short branch
+      o = EvalOperand(p+3,&v,0);
+      if (v != UNDEF) v  -= (pc + 2);
+
+      if (v == UNDEF) // assume long branch
+      {
+         il  = 3;
+         oc |= 3;
+      }
+      else if (v < -128 || v > 127)
+      {
+         il  = 3;
+         oc |= 3;
+         v &= 0xffff;
+      }
+
+      // lock branch opcode on pass before final
+
+      if (Pass == MaxPass-1)
+      {
+         ROM[pc] = oc;
+      }
+
+      // use locked opcode on final pass
+
+      if (Pass == MaxPass)
+      {
+         if (v == UNDEF)
+         {
+            ErrorLine(p);
+            ErrorMsg("Branch to undefined label\n");
+            exit(1);
+         }
+         oc = ROM[pc];
+         il = 2;
+         if ((oc & 3) == 3)
+         {
+            il = 3;
+            v &= 0xffff;
+         }
+      }
+   }
+
+   // short branches
 
    else if (am == AM_Rela)
    {
       il = 2;
       o = EvalOperand(p+3,&v,0);
       if (v != UNDEF) v  -= (pc + 2);
-      if (Phase == 2 && v == UNDEF)
+      if (Pass == MaxPass && v == UNDEF)
       {
          ErrorLine(p);
          ErrorMsg("Branch to undefined label\n");
          exit(1);
       }
-      if (Phase == 2 && (v < -128 || v > 127))
+      if (Pass == MaxPass && (v < -128 || v > 127))
       {
          ErrorLine(p);
          ErrorMsg("Branch too long (%d)\n",v);
@@ -2759,7 +2958,7 @@ char *GenerateCode(char *p)
       il = 3;
       o = EvalOperand(p+4,&v,0);
       if (v != UNDEF) v = (v - pc - 2) & 0xffff;
-      if (Phase == 2 && v == UNDEF)
+      if (Pass == MaxPass && v == UNDEF)
       {
          ErrorLine(p);
          ErrorMsg("Branch to undefined label\n");
@@ -2784,7 +2983,8 @@ char *GenerateCode(char *p)
          exit(1);
       }
       o = EvalOperand((char *)Operand,&v,0);
-      if (GenIndex != PHWIndex && am == AM_Imme && Phase == 2 &&
+      w = v - (bp << 8); // for base page != zero
+      if (GenIndex != PHWIndex && am == AM_Imme && Pass == MaxPass &&
           (v < -128 || v > 255))
       {
             ErrorLine(p);
@@ -2795,34 +2995,39 @@ char *GenerateCode(char *p)
       {
          if (df) fprintf(df,"DPAG:%s\n",Line);
          il = 2;
+         v = w;
          if (v < -128 || v > 255)
          {
             ErrorLine(p);
-            ErrorMsg("Immediate value out of range (%d)\n",v);
+            ErrorMsg("base page value out of range (%d)\n",v);
             exit(1);
          }
       }
-      else if (v >= 0 && v < 256 && GenIndex >= 0)
+      else if (w >= 0 && w < 256 && GenIndex >= 0)
       {
          if (am == AM_Abso && Gen[GenIndex].Opc[AM_Dpag] >= 0)
          {
+            v = w;
             am = AM_Dpag;
             oc = Gen[GenIndex].Opc[AM_Dpag];
             --il;
          }
          else if (am == AM_Absx && Gen[GenIndex].Opc[AM_Dpgx] >= 0)
          {
+            v = w;
             am = AM_Dpgx;
             oc = Gen[GenIndex].Opc[AM_Dpgx];
             il = 2;
          }
          else if (oc == 0xbe) // LDX Abs,Y
          {
+            v = w;
             oc = 0xb6;        // LDX DP,Y
             il = 2;
          }
          else if (oc == 0x9b) // STX Abs,Y
          {
+            v = w;
             oc = 0x96;        // STX DP,Y
             il = 2;
          }
@@ -2841,7 +3046,7 @@ char *GenerateCode(char *p)
       exit(1);
    }
    AdjustOpcode(&v);
-   if (Phase == 2)
+   if (Pass == MaxPass)
    {
       if (v == UNDEF)
       {
@@ -2852,6 +3057,11 @@ char *GenerateCode(char *p)
 
       lo = v & 0xff;
       hi = v >> 8;
+      if (hi == bp && il < 3)
+      {
+         hi = 0;
+         v  = lo;
+      }
 
       if (il < 3 && (v < -128 || v > 255))
       {
@@ -2898,7 +3108,7 @@ char *GenerateCode(char *p)
    }
    if (pc+il > 0xffff)
    {
-      if (Phase > 1)
+      if (Pass == MaxPass)
       {
          ++ErrNum;
          ErrorMsg("Program counter exceeds 64 KB\n");
@@ -3028,7 +3238,7 @@ void RecordMacro(char *p)
          }
          Macros++;
       }
-      else if (Phase == 2) // List macro
+      else if (Pass == MaxPass) // List macro
       {
          PrintLiNo(1);
          ++LiNo;
@@ -3043,7 +3253,7 @@ void RecordMacro(char *p)
          } while (!feof(sf) && !Strcasestr(Line,"ENDMAC"));
          LiNo-=2;
       }
-      else if (Phase == 1)
+      else if (Pass == MaxPass)
       {
          ++ErrNum;
          ErrorMsg("Duplicate macro [%s]\n",Macro);
@@ -3063,7 +3273,7 @@ int ExpandMacro(char *m)
 
    j = MacroIndex(m);
    if (j < 0) return j;
-   if (df) fprintf(df,"Expanding [%s] phase %d\n",Mac[j].Name,Phase);
+   if (df) fprintf(df,"Expanding [%s] phase %d\n",Mac[j].Name,Pass);
 
    p = NextSymbol(m,Macro);
    p = SkipSpace(p);
@@ -3080,7 +3290,7 @@ int ExpandMacro(char *m)
    ++InsideMacro;
    MacroPointer = Mac[j].Body;
 
-   if (Phase == 2)
+   if (Pass == MaxPass)
    {
       Mac[j].Cola = m - Line;
       PrintLine();
@@ -3147,7 +3357,7 @@ char *ParseModule(char *p)
    DefineLabel(p,&ModuleStart,0);
    strcpy(Scope,Label);
    if (df) fprintf(df,"SCOPE: [%s]\n",Scope);
-   if (Phase == 2) fprintf(lf,"              %s\n",Line);
+   if (Pass == MaxPass) fprintf(lf,"              %s\n",Line);
    return p+strlen(p);
 }
 
@@ -3157,7 +3367,7 @@ char *ParseModule(char *p)
 
 char *ParseEndMod(char *p)
 {
-   if (Phase == 2)
+   if (Pass == MaxPass)
    {
       ListSizeInfo();
    }
@@ -3187,18 +3397,18 @@ void ParseLine(char *cp)
    if (Skipping)
    {
       PrintLiNo(1);
-      if (Phase == 2) fprintf(lf,"SKIP          %s\n",Line);
+      if (Pass == MaxPass) fprintf(lf,"SKIP          %s\n",Line);
       if (df)         fprintf(df,"%5d SKIP          %s\n",LiNo,Line);
       return;
    }
-   if (pf && Phase == 2 && !InsideMacro)
+   if (pf && Pass == MaxPass && !InsideMacro)
    {
        if (MacroStopped) MacroStopped = 0;
        else fprintf(pf,"%s\n",Line); // write to preprocessed file
    }
    if (CommentLine(cp))
    {
-      if (Phase == 2)
+      if (Pass == MaxPass)
       {
           if (*cp) PrintLine();
           else     PrintLiNo(-1);
@@ -3207,7 +3417,7 @@ void ParseLine(char *cp)
    }
    if (!Strncasecmp(cp,"MODULE",6))    cp = ParseModule(cp+6);
    if (!Strncasecmp(cp,"ENDMOD",6))    cp = ParseEndMod(cp+6);
-   if (*cp =='_' || isalpha(*cp)) // Macro, Label or mnemonic
+   if (*cp =='_' || isalpha(*cp) || isnnd(cp)) // Macro, Label or mnemonic
    {
       if (!Strncasecmp(cp,"MACRO ",6))
       {
@@ -3226,7 +3436,7 @@ void ParseLine(char *cp)
          if (*cp == 0 || *cp == ';') // no code or data
          {
             PrintLiNo(1);
-            if (Phase == 2)
+            if (Pass == MaxPass)
                fprintf(lf,"%4.4x          %s\n",v&0xffff,Line);
             return;
          }
@@ -3242,7 +3452,7 @@ void ParseLine(char *cp)
    if (oc >= 0) GenerateCode(cp);
 }
 
-void Phase1Listing(void)
+void Pass1Listing(void)
 {
    if (Line[0] == 0 || Line[0] == ';') return;
    fprintf(df,"%s\n",Line);
@@ -3258,7 +3468,7 @@ void Phase1Listing(void)
 int CloseInclude(void)
 {
    PrintLiNo(1);
-   if (Phase == 2)
+   if (Pass == MaxPass)
    {
       fprintf(lf,";                       closed INCLUDE file %s\n",
             IncludeStack[IncludeLevel].Src);
@@ -3272,13 +3482,17 @@ int CloseInclude(void)
    return feof(sf);
 }
 
-void Phase1(void)
+void Pass1(void)
 {
    int l,Eof;
 
-   Phase = 1;
+   pc = -1;
+   bp =  0;
    ForcedEnd = 0;
+   LiNo = 0;
+   TotalLiNo = 0;
    strcpy(Scope,"Main");
+   rewind(sf);
    fgets(Line,sizeof(Line),sf);
    Eof = feof(sf);
    while (!Eof || IncludeLevel > 0)
@@ -3288,7 +3502,7 @@ void Phase1(void)
       if (l && Line[l-1] == 10) Line[--l] = 0; // Remove linefeed
       if (l && Line[l-1] == 13) Line[--l] = 0; // Remove return
       ParseLine(Line);
-      if (df) Phase1Listing();
+      if (df) Pass1Listing();
       if (InsideMacro) NextMacLine(Line);
       else
       {
@@ -3300,12 +3514,12 @@ void Phase1(void)
 }
 
 
-void Phase2(void)
+void Pass2(void)
 {
     int l,Eof;
 
-   Phase =  2;
    pc    = -1;
+   bp    =  0;
    ForcedEnd = 0;
    strcpy(Scope,"Main");
    if (IfLevel)
@@ -3332,7 +3546,7 @@ void Phase2(void)
       else fgets(Line,sizeof(Line),sf);
       Eof = feof(sf) || ForcedEnd;
       if (Eof && IncludeLevel > 0) Eof = CloseInclude();
-      if (df) fprintf(df,"Phase 2:[%s] EOF=%d\n",Line,Eof);
+      if (df) fprintf(df,"Pass %d:[%s] EOF=%d\n",Pass,Line,Eof);
       if (Eof && IncludeLevel > 0) Eof = CloseInclude();
       if (GenEnd < pc) GenEnd = pc; // Remember highest assenble address
       if (ErrNum >= ERRMAX)
@@ -3488,6 +3702,7 @@ int main(int argc, char *argv[])
    for (ic=1 ; ic < argc ; ++ic)
    {
       if (!strcmp(argv[ic],"-x")) SkipHex = 1;
+      else if (!strcmp(argv[ic],"-b")) BranchOpt = 1;
       else if (!strcmp(argv[ic],"-d")) Debug = 1;
       else if (!strcmp(argv[ic],"-i")) IgnoreCase = 1;
       else if (!strcmp(argv[ic],"-n")) WithLiNo = 1;
@@ -3528,8 +3743,11 @@ int main(int argc, char *argv[])
 
    if (!strcmp(Ext,".src")) // assume source code for MEGA65
    {
-      CPU_Type = CPU_45GS02;
-      CPU_Name = CPU_Names[3];
+      BSO_Mode   = 1; // VAX BSO assembler compatibility mode
+      CPU_Type   = CPU_45GS02;
+      CPU_Name   = CPU_Names[3];
+      BranchOpt  = 1;
+      IgnoreCase = 1;
    }
 
    strcpy(Pre,Src);
@@ -3540,7 +3758,7 @@ int main(int argc, char *argv[])
 
    printf("\n");
    printf("*******************************************\n");
-   printf("* Bit Shift Assembler 10-Dec-2020         *\n");
+   printf("* Bit Shift Assembler 02-Jan-2021         *\n");
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
@@ -3566,8 +3784,11 @@ int main(int argc, char *argv[])
    STYIndex = GetIndex("STY");
    PHWIndex = GetIndex("PHW");
 
-   Phase1();
-   Phase2();
+   for (Pass = 1 ; Pass < MaxPass ; ++Pass)
+   {
+      Pass1();
+   }
+   Pass2();
    WriteBinaries();
    ListUndefinedSymbols();
    PairSymbols();
@@ -3584,6 +3805,11 @@ int main(int argc, char *argv[])
    printf("* Source Lines: %6d                    *\n",TotalLiNo);
    printf("* Symbols     : %6d                    *\n",Labels);
    printf("* Macros      : %6d                    *\n",Macros);
+   for (l = 0 ; l < MaxPass ; ++l)
+   {
+      if (BOC[l])
+      printf("* Pass     %3d: %6d label changes      *\n",l+1,BOC[l]);
+   }
    printf("*******************************************\n");
    if (ErrNum)
       printf("* %3d error%s occured%s                      *\n",
