@@ -375,6 +375,8 @@ int JSRIndex;
 int BITIndex;
 int STYIndex;
 int PHWIndex;
+int LDAIndex;
+int STAIndex;
 int NegNeg;
 int PreNop;
 
@@ -603,6 +605,8 @@ int InsideMacro;    // Macro nesting level
 int CurrentMacro;   // Macro index
 int ModuleStart;    // Address of a module
 int WordOC;         // List 2 byte opcodes as word
+
+unsigned char ROM_Fill;
 
 int ERRMAX = 10;    // Stop assemby after ERRMAX errors
 int LoadAddress = UNDEF;
@@ -1103,11 +1107,11 @@ char *SetPC(char *p)
       }
    }
    else p += 3; // .ORG syntax
+   PrintPCLine();
    p = EvalOperand(p+1,&v,0);
    if (df) fprintf(df,"PC = %4.4x\n",v);
    pc = v;
    if (LoadAddress == UNDEF) LoadAddress = pc;
-   PrintPCLine();
    if (GenStart > pc) GenStart = pc; // remember lowest pc value
    return p;
 }
@@ -2356,6 +2360,8 @@ char *IsPseudo(char *p)
    else if (!Strncasecmp(p,"SIZE",4))    ListSizeInfo();
    else if (!Strncasecmp(p,"SKI",3))     p += strlen(p);
    else if (!Strncasecmp(p,"PAG",3))     p += strlen(p);
+   else if (!Strncasecmp(p,"NAM",3))     p += strlen(p);
+   else if (!Strncasecmp(p,"SUBTTL",6))  p += strlen(p);
    else if (!Strncasecmp(p,"END",3))     p += strlen(p);
    if (pc > 0x10000 && pc != UNDEF)
    {
@@ -3044,6 +3050,23 @@ char *GenerateCode(char *p)
       ErrorMsg("Operand missing\n");
       exit(1);
    }
+
+   // check for LDA (bp,SP),Y or STA (bp,SP),Y
+
+   if (CPU_Type == CPU_45GS02 && am == AM_Indy && !Strncasecmp(o,",SP",3))
+   {
+      if (GenIndex == LDAIndex)
+      {
+          oc = 0xe2;
+          *o = 0;
+      }
+      if (GenIndex == STAIndex)
+      {
+          oc = 0x82;
+          *o = 0;
+      }
+   }
+
    if (*o && *o != ';')
    {
       ErrorLine(p);
@@ -3753,6 +3776,7 @@ int main(int argc, char *argv[])
       CPU_Name   = CPU_Names[3];
       BranchOpt  = 1;
       IgnoreCase = 1;
+      ROM_Fill   = 0xff;
    }
 
    strcpy(Pre,Src);
@@ -3788,6 +3812,10 @@ int main(int argc, char *argv[])
    BITIndex = GetIndex("BIT");
    STYIndex = GetIndex("STY");
    PHWIndex = GetIndex("PHW");
+   LDAIndex = GetIndex("LDA");
+   STAIndex = GetIndex("STA");
+
+   memset(ROM,ROM_Fill,sizeof(ROM));
 
    for (Pass = 1 ; Pass < MaxPass ; ++Pass)
    {
