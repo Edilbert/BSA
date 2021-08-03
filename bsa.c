@@ -4,7 +4,7 @@
 Bit Shift Assembler
 *******************
 
-Version: 02-Jan-2021
+Version: 03-Aug-2021
 
 The assembler was developed and tested on a MAC with OS Catalina.
 Using no specific options of the host system, it should run on any
@@ -1200,7 +1200,10 @@ char *DefineLabel(char *p, int *val, int Locked)
    // in BSO mode use scope
 
    if (BSO_Mode && isalpha(Label[0]) && !strncmp(Label,Line,strlen(Label)))
+   {
       strcpy(Scope,Label);
+      ModuleStart = pc;
+   }
 
    if (df) fprintf(df,"DefineLabel:%s\n",Label);
    if (*p == ':') ++p; // Ignore colon after label
@@ -1450,6 +1453,25 @@ char *ParseLongData(char *p, int l)
    return p;
 }
 
+double BasicReal(unsigned char B[])
+{
+   double Mantissa;
+   double Result;
+   int  Sign;
+   int  Exponent;
+
+   Exponent =   B[0] - 128;
+   Sign     =   B[1] & 0x80;
+   Mantissa = ((unsigned long)(B[1] | 0x80) << 24)
+            +  (B[2]         << 16)
+            +  (B[3]         <<  8)
+            +  (B[4]              );
+   Result   = ldexp(Mantissa,Exponent-32);
+   if (Sign) Result = -Result;
+   return Result;
+}
+
+
 
 char *ParseRealData(char *p)
 {
@@ -1474,6 +1496,14 @@ char *ParseRealData(char *p)
       {
           if (!isxdigit(*p) || !isxdigit(*(p+1))) break;
           sscanf(p,"%2x",&v);
+          Operand[i] = v;
+      }
+   }
+   else if (*p == '@') // .real @204,@346,@032,@055,@033
+   {
+      for (i=0 ; i <= mansize ; ++i, p+=5)
+      {
+          sscanf(p+1,"%3o",&v);
           Operand[i] = v;
       }
    }
@@ -1542,13 +1572,14 @@ char *ParseRealData(char *p)
       fprintf(lf," %2.2x %2.2x %2.2x",Operand[0],Operand[1],Operand[2]);
       if (mansize == 3 && strncmp(Line,"   ",3)==0)
       {
-         fprintf(lf," %2.2x %s\n",Operand[3],Line+3);
+         fprintf(lf," %2.2x %s",Operand[3],Line+3);
       }
       else if (mansize == 4 && strncmp(Line,"      ",6)==0)
       {
-         fprintf(lf," %2.2x %2.2x %s\n",Operand[3],Operand[4],Line+6);
+         fprintf(lf," %2.2x %2.2x %s",Operand[3],Operand[4],Line+6);
       }
-      else fprintf(lf," %s\n",Line);
+      else fprintf(lf," %s",Line);
+      fprintf(lf," %20.10lf\n",BasicReal(Operand));
    }
    pc += mansize+1;
    return p;
@@ -1970,7 +2001,7 @@ char *ParseFillData(char *p)
    return p;
 }
 
-void ListSizeInfo()
+char *ListSizeInfo(char *p)
 {
    int i;
 
@@ -1984,6 +2015,7 @@ void ListSizeInfo()
                   pc-ModuleStart,pc-ModuleStart);
       fprintf(lf,"\n");
    }
+   return p + strlen(p);
 }
 
 
@@ -2324,7 +2356,16 @@ char *ParseByteData(char *p, int Charset)
          if (i < 3) fprintf(lf," %2.2x",ByteBuffer[i]);
       }
       for (i=l ; i < 3 ; ++i) fprintf(lf,"   ");
-      fprintf(lf," %s\n",Line);
+      if (l == 4 && strncmp(Line,"   ",3)==0)
+      {
+         fprintf(lf," %2.2x %s",ByteBuffer[3],Line+3);
+      }
+      else if (l == 5 && strncmp(Line,"      ",6)==0)
+      {
+         fprintf(lf," %2.2x %2.2x %s",ByteBuffer[3],ByteBuffer[4],Line+6);
+      }
+      else fprintf(lf," %s",Line);
+      fprintf(lf,"\n");
    }
    pc += l;
    return p;
@@ -2357,7 +2398,7 @@ char *IsPseudo(char *p)
    else if (!Strncasecmp(p,"ORG",3))     p = SetPC(p);
    else if (!Strncasecmp(p,"LOAD",4))    WriteLA = 1;
    else if (!Strncasecmp(p,"INCLUDE",7)) p = IncludeFile(p+7);
-   else if (!Strncasecmp(p,"SIZE",4))    ListSizeInfo();
+   else if (!Strncasecmp(p,"SIZE",4))    p = ListSizeInfo(p);
    else if (!Strncasecmp(p,"SKI",3))     p += strlen(p);
    else if (!Strncasecmp(p,"PAG",3))     p += strlen(p);
    else if (!Strncasecmp(p,"NAM",3))     p += strlen(p);
@@ -3397,11 +3438,11 @@ char *ParseEndMod(char *p)
 {
    if (Pass == MaxPass)
    {
-      ListSizeInfo();
+      ListSizeInfo(p);
    }
    Scope[0] = 0;
    ModuleStart = 0;
-   return p;
+   return p+strlen(p);
 }
 
 
@@ -3474,6 +3515,13 @@ void ParseLine(char *cp)
    if (*cp == '*') cp = SetPC(cp);       // Set program counter
    if (*cp == '&') cp = SetBSS(cp);      // Set BSS counter
    if (*cp == '.') cp = IsPseudo(cp+1);  // Pseudo Op with dot
+   if (*cp == ',')
+   {
+      ++ErrNum;
+      ErrorLine(cp);
+      ErrorMsg("Syntax Error");
+      exit(1);
+   }
    if (*cp)        cp = IsPseudo(cp);    // Pseudo Op
    if (ForcedEnd) return;
    if (oc < 0) oc = IsInstruction(cp); // Check for mnemonic after label
@@ -3787,7 +3835,7 @@ int main(int argc, char *argv[])
 
    printf("\n");
    printf("*******************************************\n");
-   printf("* Bit Shift Assembler 02-Jan-2021         *\n");
+   printf("* Bit Shift Assembler 03-Aug-2021         *\n");
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
