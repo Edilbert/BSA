@@ -4,7 +4,7 @@
 Bit Shift Assembler
 *******************
 
-Version: 03-Aug-2021
+Version: 03-Dec-2021
 
 The assembler was developed and tested on a MAC with OS Catalina.
 Using no specific options of the host system, it should run on any
@@ -621,7 +621,7 @@ int il;      // instruction length
 int pc = -1; // program counter
 int bss;     // bss counter
 int Pass;
-#define MAXPASS 12
+#define MAXPASS 20
 int BOC[MAXPASS];       // branch opt count
 int MaxPass = MAXPASS;
 int BSO_Mode;
@@ -849,6 +849,8 @@ void ErrorLine(char *p)
    int i,ep;
    printf("%s\n",Line);
    ep = p - Line;
+   if (ep < 0 || ep > 79) return;
+
    for (i=0 ; i < ep ; ++i) printf(" ");
    printf("^\n");
 }
@@ -2871,13 +2873,13 @@ char *GenerateCode(char *p)
    w = 0; // operand value - base value
    o = (char *)Operand;
 
+   if (df) fprintf(df,"GenerateCode %4.4X %d %s\n",pc,am,p);
    if (pc < 0)
    {
       ErrorLine(p);
       ErrorMsg("Undefined program counter (PC)\n");
       exit(1);
    }
-   if (df) fprintf(df,"GenerateCode %4.4X %d %s\n",pc,am,p);
 
    // implied instruction (no operand or implied A register)
 
@@ -3238,7 +3240,7 @@ void RecordMacro(char *p)
       exit(1);
    }
    bl = 1;
-   p = NextSymbol(p,Macro);
+   p = NextSymbol(p,Macro);  // macro name
    l = strlen(Macro);
    p = SkipSpace(p);
    if (*p == '(')
@@ -3307,7 +3309,15 @@ void RecordMacro(char *p)
          }
          Macros++;
       }
-      else if (Pass == MaxPass) // List macro
+      else     // skip macro body
+      {
+         while (!feof(sf) && !Strcasestr(Line,"ENDMAC"))
+         {
+            ++LiNo;
+            fgets(Line,sizeof(Line),sf);
+         }
+      }
+      if (Pass == MaxPass) // List macro
       {
          PrintLiNo(1);
          ++LiNo;
@@ -3321,12 +3331,6 @@ void RecordMacro(char *p)
             if (pf) fprintf(pf,"%s",Line);
          } while (!feof(sf) && !Strcasestr(Line,"ENDMAC"));
          LiNo-=2;
-      }
-      else if (Pass == MaxPass)
-      {
-         ++ErrNum;
-         ErrorMsg("Duplicate macro [%s]\n",Macro);
-         exit(1);
       }
       if (df) fprintf(df,"Macro [%s] = %s\n",Mac[j].Name,Mac[j].Body);
    }
@@ -3456,6 +3460,7 @@ void ParseLine(char *cp)
    int v,m;
    // char *start = cp;  // Remember start of line
 
+   if (df) fprintf(df,"Pass %d:ParseLine:%s\n",Pass,cp);
    am = -1;
    oc = -1;
    Label[0] = 0;
@@ -3491,6 +3496,8 @@ void ParseLine(char *cp)
       if (!Strncasecmp(cp,"MACRO ",6))
       {
          RecordMacro(cp+6);
+         if (df) fprintf(df,"Macro recorded\n");
+         if (df) fprintf(df,"Line:%s\n",Line);
          return;
       }
       if ((oc = IsInstruction(cp)) < 0)
@@ -3835,7 +3842,7 @@ int main(int argc, char *argv[])
 
    printf("\n");
    printf("*******************************************\n");
-   printf("* Bit Shift Assembler 03-Aug-2021         *\n");
+   printf("* Bit Shifter's Assembler 03-Dec-2021     *\n");
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
