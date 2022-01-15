@@ -436,6 +436,7 @@ struct GenStruct
 // menmonics for 45GS02 32 bit instructions with the Q register
 // the Q register is a combination of A,X,Y,Z
 // address modes are:
+// accumulator         LSR  Q       Q
 // base page quad      LDQ  dp      8 bit address
 // absolute  quad      LDQ  nnnn   16 bit address
 // indirect  quad      LDQ  (dp)   16 bit address indirect
@@ -618,6 +619,7 @@ int bp;      // base page
 int oc;      // op code
 int am;      // address mode
 int il;      // instruction length
+int ml;      // mnemonic length
 int pc = -1; // program counter
 int bss;     // bss counter
 int Pass;
@@ -926,7 +928,8 @@ int OperandExists(char *p)
 {
    while (isspace(*p)) ++p;
    if (*p == ';' || *p ==  0 ) return 0;
-   if (*p != 'A' && *p != 'a') return 1;
+   if (*p != 'A' && *p != 'a' && *p != 'Q' && *p != 'q') return 1;
+   if (CPU_Type != CPU_45GS02 && (*p == 'Q' || *p == 'q')) return 1;
 
    // treat accumulator mode as implied
 
@@ -935,19 +938,29 @@ int OperandExists(char *p)
    return (*p != ';' && *p !=  0 );
 }
 
+int Qumulator(char *p)
+{
+   while (isspace(*p)) ++p;
+   if (*p != 'Q' && *p != 'q') return 0;
+   if (p[1] == 0) return 1;
+   if (isym(p[1])) return 0;
+   return 1;
+}
+
 // *************
 // IsInstruction
 // *************
 
 int IsInstruction(char *p)
 {
-   unsigned int i,l,bn;
+   unsigned int i,l,bn,oe;
 
    // Initialize
 
    am  = AM_None; // address mode
    Mne = NULL;    // menmonic
    GenIndex = -1;
+   ml = 3;
 
    // length of mnemonic must be 3 or 4
 
@@ -993,6 +1006,7 @@ int IsInstruction(char *p)
       if (!Strncasecmp(p,MneQ[i],l) && isspace(p[l]))
       {
          Mne = MneQ[i];
+         if (Qumulator(p+l)) break;
          GenIndex = i;
          return 512+i;
       }
@@ -1023,11 +1037,22 @@ int IsInstruction(char *p)
 
    // chacter after mnemonic must be zero or white space
 
-   if (p[3] && !isspace(p[3])) return -1;
+   if (CPU_Type == CPU_45GS02 && strlen(p) > 3 &&
+       (p[3] == 'Q' || p[3] == 'q'))
+   {
+      if (p[4] != 0 && !isspace(p[4])) return -1;
+      oe = OperandExists(p+4);
+      ml = 4;
+   }
+   else
+   {
+      if (p[3] != 0 && !isspace(p[3])) return -1;
+      oe = OperandExists(p+3);
+   }
 
    // Check table of implied instructions
 
-   if (!OperandExists(p+3))
+   if (!oe)
    for (i=0 ; i < IMPS ; ++i)
    {
       if (!Strncasecmp(p,Imp[i].Mne,3) // match mnemonic
@@ -1036,6 +1061,7 @@ int IsInstruction(char *p)
          am  = AM_Impl;
          Mne = Imp[i].Mne;
          if (df) fprintf(df,"Imp:%s %2.2x\n",Mne,Imp[i].Opc);
+         if (p[3] == 'Q' || p[3] == 'q') return 512+Imp[i].Opc;
          return Imp[i].Opc;
       }
    }
@@ -2430,6 +2456,14 @@ int AddressMode(unsigned char *p)
    int mi = 0;
    int ii = 0;
 
+   // remove ",Z" for Q instructions
+
+   if (l > 2 && oc > 511 && p[l-2] == ',' && (p[l-1] == 'z' || p[l-1] == 'Z'))
+   {
+      l -= 2;
+      p[l] = 0;
+   }
+
    // remove redundant pair of brackets
    // or identify Q operation with 32 bit address
 
@@ -2588,6 +2622,7 @@ char * SplitOperand(char *p)
 
    // valid address mode for Q instructions are:
 
+   // AM_Impl  Q
    // AM_Dpag  base page
    // AM_Abso  absolute
    // AM_      indirect
@@ -2600,6 +2635,11 @@ char * SplitOperand(char *p)
       {
          oc = Gen[GenIndex].Opc[am];
          il = 5;
+      }
+      else if (am == AM_Impl)
+      {
+         oc = Gen[GenIndex].Opc[am];
+         il = 3;
       }
       else if (am == AM_Indz)
       {
@@ -2729,6 +2769,14 @@ void AdjustOpcode(int *v)
    {
       *v = (*v << 8) | oc;
       oc = 0xea;   // NOP   (DP),Z
+      return;
+   }
+
+   // MEGA65 qumulator
+
+   if (am == AM_Impl && il == 3)
+   {
+      NegNeg = 1;
       return;
    }
 
@@ -2883,10 +2931,20 @@ char *GenerateCode(char *p)
 
    // implied instruction (no operand or implied A register)
 
+   if (df) fprintf(df,"Implied: oc = %d\n",oc);
    if (am == AM_Impl)
    {
-      il = 1;              // instruction length
-      p += 3;              // skip mnemonic
+      if (oc > 511)
+      {
+         il = 3;
+         p += ml;
+         oc -= 512;
+      }
+      else
+      {
+         il = 1;              // instruction length
+         p += 3;              // skip mnemonic
+      }
    }
 
    // test & branch  BBRn dp,label
@@ -3163,13 +3221,13 @@ char *GenerateCode(char *p)
          ROM[pl++] = lo;
          fprintf(lf," %2.2x",lo&0xff);
       }
-      else if (il < 4) fprintf(lf,"   ");
+      else if (il < 3) fprintf(lf,"   ");
       if (pl < pc+il)
       {
          ROM[pl++] = hi;
          fprintf(lf," %2.2x",hi&0xff);
       }
-      else if (il < 4) fprintf(lf,"   ");
+      else if (il < 3) fprintf(lf,"   ");
       if (il > 3 && !strncmp(li,"   ",3)) li += 3;
       if (il > 4 && !strncmp(li,"   ",3)) li += 3;
       fprintf(lf," %s",li);
