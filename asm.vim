@@ -14,42 +14,55 @@ endif
 syn case ignore
 
 " Opcodes
-syn match a65Opcode	"\<PHP\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<PLA\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<PLX\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<PLY\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<SEC\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<CLD\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<SED\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<CLI\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<PHP\($\|\s\)"
+syn match a65Opcode	"\<PLA\($\|\s\)"
+syn match a65Opcode	"\<PLX\($\|\s\)"
+syn match a65Opcode	"\<PLY\($\|\s\)"
+syn match a65Opcode	"\<PLZ\($\|\s\)"
+syn match a65Opcode	"\<SEC\($\|\s\)"
+syn match a65Opcode	"\<CLD\($\|\s\)"
+syn match a65Opcode	"\<SED\($\|\s\)"
+syn match a65Opcode	"\<CLI\($\|\s\)"
 syn match a65Opcode	"\<BVC\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<BVS\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<BCS\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<BCC\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<DEY\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<DEY\($\|\s\)"
+syn match a65Opcode	"\<DEZ\($\|\s\)"
+syn match a65Opcode	"\<INZ\($\|\s\)"
 syn match a65Opcode	"\<DEC\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<DEW\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<INW\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<CMP\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<CPX\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<CPZ\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<BIT\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<ROL\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<ROR\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<ASL\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<TXA\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<TYA\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<TSX\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<TXS\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<ASW\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<ROW\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<TAZ\($\|\s\)"
+syn match a65Opcode	"\<TZA\($\|\s\)"
+syn match a65Opcode	"\<MAP\($\|\s\)"
+syn match a65Opcode	"\<EOM\($\|\s\)"
+syn match a65Opcode	"\<TXA\($\|\s\)"
+syn match a65Opcode	"\<TYA\($\|\s\)"
+syn match a65Opcode	"\<TSX\($\|\s\)"
+syn match a65Opcode	"\<TXS\($\|\s\)"
 syn match a65Opcode	"\<LDA\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<LDX\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<LDY\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<LDZ\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<STA\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<PLP\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<BRK\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<RTI\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<NOP\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<SEI\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<CLV\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<PHA\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<PHX\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<BRK\($\|\s\)"
+syn match a65Opcode	"\<RTI\($\|\s\)"
+syn match a65Opcode	"\<NOP\($\|\s\)"
+syn match a65Opcode	"\<SEI\($\|\s\)"
+syn match a65Opcode	"\<CLV\($\|\s\)"
+syn match a65Opcode	"\<PHA\($\|\s\)"
+syn match a65Opcode	"\<PHX\($\|\s\)"
 syn match a65Opcode	"\<BRA\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<JMP\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<JSR\($\|\s\)" nextgroup=a65Address
@@ -72,35 +85,44 @@ syn match a65Opcode	"\<STZ\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<EOR\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<DEX\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<BPL\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<CLC\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<PHY\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<CLC\($\|\s\)"
+syn match a65Opcode	"\<PHY\($\|\s\)"
+syn match a65Opcode	"\<PHZ\($\|\s\)"
 syn match a65Opcode	"\<TRB\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<BBR\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<BBS\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<RMB\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<SMB\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<TAY\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<TAX\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<BBR.\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<BBS.\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<RMB.\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<SMB.\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<TAY\($\|\s\)"
+syn match a65Opcode	"\<TAX\($\|\s\)"
+syn match a65Opcode	"\<LBNE\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<LBEQ\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<LBMI\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<LBPL\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<LBVC\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<LBVS\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<LBCS\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<LBCC\($\|\s\)" nextgroup=a65Address
 
 " Addresses
-syn match a65Address	"\s*!\=$[0-9A-F]\{2}\($\|\s\)"
-syn match a65Address	"\s*!\=$[0-9A-F]\{4}\($\|\s\)"
-syn match a65Address	"\s*!\=$[0-9A-F]\{8}\($\|\s\)"
-syn match a65Address	"\s*!\=$[0-9A-F]\{2},X\($\|\s\)"
-syn match a65Address	"\s*!\=$[0-9A-F]\{4},X\($\|\s\)"
-syn match a65Address	"\s*!\=$[0-9A-F]\{2},Y\($\|\s\)"
-syn match a65Address	"\s*!\=$[0-9A-F]\{4},Y\($\|\s\)"
-syn match a65Address	"\s*($[0-9A-F]\{2})\($\|\s\)"
-syn match a65Address	"\s*($[0-9A-F]\{4})\($\|\s\)"
-syn match a65Address	"\s*($[0-9A-F]\{2},X)\($\|\s\)"
-syn match a65Address	"\s*($[0-9A-F]\{2}),Y\($\|\s\)"
+"syn match a65Address	"\s*!\=$[0-9A-F]\{2}\($\|\s\)"
+"syn match a65Address	"\s*($[0-9A-F]\{2})\($\|\s\)"
+
+syn match a65Address	"(.*,X)"
+syn match a65Address	"(.*),Y"
+syn match a65Address	"(.*),Z"
+syn match a65Address	"\[.*\],Z"
+syn match a65Address	",X"
 
 " Numbers
+syn match a65Number	"'.'"
 syn match a65Number	"\<[0-9]*\>"
-"syn match a65Number	"#\=[0-9]*\>"
-"syn match a65Number	"#\=$[0-9A-F]*\>"
-"syn match a65Number	"#\=&[0-7]*\>"
-"syn match a65Number	"#\=%[01]*\>"
+syn match a65Number	"$[0-9A-F]*\>"
+syn match a65Number	"#[0-9]*\>"
+syn match a65Number	"#'.'"
+syn match a65Number	"#$[0-9A-F]*\>"
+syn match a65Number	"#&[0-7]*\>"
+syn match a65Number	"#%[01]*\>"
 
 syn case match
 
@@ -136,7 +158,8 @@ syn region a65HiLo	start="#[<>]" end="$\|\s" contains=a65Comment keepend
 
 " Comments
 syn keyword a65Todo	TODO XXX FIXME BUG contained
-syn match   a65Comment	";.*"hs=s+1 contains=a65Todo
+syn match   a65Comment	";.*"hs=s contains=a65Todo
+syn match   a65Comment	"\*\*"hs=s contains=a65Comment
 syn region  a65Comment	start="/\*" end="\*/" contains=a65Todo,a65Comment
 
 " Preprocessor
