@@ -4,7 +4,7 @@
 Bit Shift Assembler
 *******************
 
-Version: 03-Dec-2021
+Version: 09-Mar-2022
 
 The assembler was developed and tested on a MAC with OS Catalina.
 Using no specific options of the host system, it should run on any
@@ -623,6 +623,7 @@ int ml;      // mnemonic length
 int pc = -1; // program counter
 int bss;     // bss counter
 int Pass;
+int o16;     // force 16 bit operand
 #define MAXPASS 20
 int BOC[MAXPASS];       // branch opt count
 int MaxPass = MAXPASS;
@@ -958,6 +959,7 @@ int IsInstruction(char *p)
    // Initialize
 
    am  = AM_None; // address mode
+   o16 = 0;       // forced operand 16 bit
    Mne = NULL;    // menmonic
    GenIndex = -1;
    ml = 3;
@@ -1863,7 +1865,7 @@ char *EvalOperand(char *p, int *v, int prio)
 
    p = SkipSpace(p);
 
-   while (*p && strchr("*/+-<>=!&^|",*p))
+   while (*p && strchr("*/+-<>!&^|",*p))
    {
       // loop through all binary operators
 
@@ -2493,6 +2495,13 @@ int AddressMode(unsigned char *p)
       return AM_Imme;
    }
 
+   if (s == '`')
+   {
+      p[0] = ' ';
+      o16 = 1;
+      il = 3;
+   }
+
    if (s != '(' && s != '[') s = 0;
 
    // outer character
@@ -3115,7 +3124,7 @@ char *GenerateCode(char *p)
             exit(1);
          }
       }
-      else if (w >= 0 && w < 256 && GenIndex >= 0)
+      else if (w >= 0 && w < 256 && GenIndex >= 0 && o16 == 0)
       {
          if (am == AM_Abso && Gen[GenIndex].Opc[AM_Dpag] >= 0)
          {
