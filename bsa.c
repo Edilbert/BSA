@@ -229,6 +229,7 @@ char *CPU_Name = "6502";
 #define AM_Indi 13
 #define AM_Quad 14
 
+#define AM_MODES 15
 
 // ***********************************
 // Mnemonics with implied address mode
@@ -382,9 +383,9 @@ int PreNop;
 
 struct GenStruct
 {
-   char Mne[5];       // Mnemonic
-   int  CPU;          // CPU type
-   int  Opc[9];       // Opcodes
+   char Mne[5];        // Mnemonic
+   int  CPU;           // CPU type
+   int  Opc[AM_MODES]; // Opcodes
 } Gen[] =
 {
    //             0    1    2    3    4    5    6    7    8
@@ -735,9 +736,11 @@ char *SkipSpace(char *p)
 // isym
 // ****
 
-int isym(char c)
+int isym(char *c)
 {
-   return (c == '_' || c == '$' || c == '.' || isalnum(c));
+   if (*c == '_' || *c == '$' || *c == '.' || isalnum(*c)) return 1;
+   if (*c == '@' && isalpha(c[1])) return 1;
+   return 0;
 }
 
 // *****
@@ -767,7 +770,7 @@ int isnnd(char *p)
 
 char *GetSymbol(char *p, char *s)
 {
-   // char *dfs = s;
+    char *dfs = s;
 
 
    // expand BSO local symbols like 40$ to Label_40$
@@ -797,8 +800,7 @@ char *GetSymbol(char *p, char *s)
 
    // copy alphanumeric characters to symbol
 
-   if (*p == '_' || *p == '$' || *p == '.' || isalnum(*p))
-      while (isym(*p)) *s++ = *p++;
+   while (isym(p)) *s++ = *p++;
 
    // terminate string
 
@@ -806,14 +808,12 @@ char *GetSymbol(char *p, char *s)
 
    // debug output
 
-/*
    if (df)
    {
       fprintf(df,"GetSymbol:");
       if (Scope[0]) fprintf(df,"Scope:[%s]",Scope);
       fprintf(df,"%s\n",dfs);
    }
-*/
    return p;
 }
 
@@ -944,7 +944,7 @@ int Qumulator(char *p)
    while (isspace(*p)) ++p;
    if (*p != 'Q' && *p != 'q') return 0;
    if (p[1] == 0) return 1;
-   if (isym(p[1])) return 0;
+   if (isym(p+1)) return 0;
    return 1;
 }
 
@@ -1208,7 +1208,7 @@ int MacroIndex(char *p)
    for (i = 0 ; i < Macros ; ++i)
    {
       l = strlen(Mac[i].Name);
-      if (!StrnCmp(p,Mac[i].Name,l) && !isym(p[l])) return i;
+      if (!StrnCmp(p,Mac[i].Name,l) && !isym(p+l)) return i;
    }
    return -1;
 }
@@ -1225,6 +1225,7 @@ char *DefineLabel(char *p, int *val, int Locked)
       ErrorMsg("Too many labels (> %d)\n",MAXLAB);
       exit(1);
    }
+   if (df) fprintf(df,"DEFINE LABEL\n");
    p = GetSymbol(p,Label);
 
    // in BSO mode use scope
@@ -1401,6 +1402,7 @@ char *EvalSymValue(char *p, int *v)
    int i;
    char Sym[ML];
 
+   if (df) fprintf(df,"EVALSYM\n");
    p = GetSymbol(p,Sym);
    for (i=0 ; i < Labels ; ++i)
    {
@@ -1758,10 +1760,14 @@ struct unaop_struct unaop[UNAOPS] =
    {'*',&op_prc}, // program counter
    {'$',&op_hex}, // hex constant
    { 39,&op_cha}, // char constant
-   {'@',&op_oct}, // octal constant
    {'%',&op_bin}, // binary constant
-   {'?',&op_len}  // length of .BYTE data line
+   {'?',&op_len}, // length of .BYTE data line
+   {'@',&op_oct}  // octal constant
 };
+
+char unastring[UNAOPS+1] = "[(+-!~<>*$'%?";
+
+int unaops = UNAOPS-1;
 
 int op_mul(int l, int r) { return l *  r; }
 int op_div(int l, int r) { if (r) return l / r; else return UNDEF; }
@@ -1837,9 +1843,9 @@ char *EvalOperand(char *p, int *v, int prio)
    // Start parsing unary operators
    // < > * have special 6502 meanings
 
-   if (*p && strchr("[(+-!~<>*$'%?@",*p))
+   if (*p && strchr(unastring,*p))
    {
-      for (i=0 ; i < UNAOPS ; ++i)
+      for (i=0 ; i < unaops ; ++i)
       if (*p == unaop[i].op)
       {
           p = unaop[i].foo(p,v);
@@ -1847,7 +1853,7 @@ char *EvalOperand(char *p, int *v, int prio)
       }
    }
    else if (isdigit(c) && !isnnd(p)) p = EvalDecValue(p,v);
-   else if (isym(c)    ||  isnnd(p)) p = EvalSymValue(p,v);
+   else if (isym(p)    ||  isnnd(p)) p = EvalSymValue(p,v);
    else
    {
       ErrorLine(p);
@@ -2428,12 +2434,14 @@ char *IsPseudo(char *p)
    else if (!Strncasecmp(p,"ORG",3))     p = SetPC(p);
    else if (!Strncasecmp(p,"LOAD",4))    WriteLA = 1;
    else if (!Strncasecmp(p,"INCLUDE",7)) p = IncludeFile(p+7);
+   else if (!Strncasecmp(p,"!SRC",4))    p = IncludeFile(p+4);
    else if (!Strncasecmp(p,"SIZE",4))    p = ListSizeInfo(p);
    else if (!Strncasecmp(p,"SKI",3))     p += strlen(p);
    else if (!Strncasecmp(p,"PAG",3))     p += strlen(p);
    else if (!Strncasecmp(p,"NAM",3))     p += strlen(p);
    else if (!Strncasecmp(p,"SUBTTL",6))  p += strlen(p);
    else if (!Strncasecmp(p,"END",3))     p += strlen(p);
+   else if (!Strncasecmp(p,"!ADDR ",6))  p += 6;
    if (pc > 0x10000 && pc != UNDEF)
    {
       ErrorMsg("Program counter overflow\n");
@@ -2519,6 +2527,7 @@ int AddressMode(unsigned char *p)
 
       // middle character
 
+      if (l > 0 && p[l-1] == ' ') --l; // e.g. addr, x
       if (l > 0) m = toupper(p[l-1]);
       if (m != ',' && m != 'X') m = 0;
       else mi = l-1;
@@ -3556,6 +3565,7 @@ void ParseLine(char *cp)
       }
       return;
    }
+   if (!Strncasecmp(cp,"!ADDR ",6))    cp += 6;
    if (!Strncasecmp(cp,"MODULE",6))    cp = ParseModule(cp+6);
    if (!Strncasecmp(cp,"ENDMOD",6))    cp = ParseEndMod(cp+6);
    if (*cp =='_' || isalpha(*cp) || isnnd(cp)) // Macro, Label or mnemonic
@@ -3589,6 +3599,7 @@ void ParseLine(char *cp)
    if (*cp == '*') cp = SetPC(cp);       // Set program counter
    if (*cp == '&') cp = SetBSS(cp);      // Set BSS counter
    if (*cp == '.') cp = IsPseudo(cp+1);  // Pseudo Op with dot
+   if (*cp == '!') cp = IsPseudo(cp);    // Pseudo Op with exclamation mark
    if (*cp == ',')
    {
       ++ErrNum;
@@ -3899,6 +3910,8 @@ int main(int argc, char *argv[])
       BranchOpt  = 1;
       IgnoreCase = 1;
       ROM_Fill   = 0xff;
+      unaops++;      // allow octal constants
+      strcpy(unastring,"[(+-!~<>*$'%?@");
    }
 
    strcpy(Pre,Src);
@@ -3909,7 +3922,7 @@ int main(int argc, char *argv[])
 
    printf("\n");
    printf("*******************************************\n");
-   printf("* Bit Shifter's Assembler 03-Dec-2021     *\n");
+   printf("* Bit Shifter's Assembler 31-Mar-2022     *\n");
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
