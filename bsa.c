@@ -4,7 +4,7 @@
 Bit Shift Assembler
 *******************
 
-Version: 09-Mar-2022
+Version: 26-Jun-2022
 
 The assembler was developed and tested on a MAC with OS Catalina.
 Using no specific options of the host system, it should run on any
@@ -2420,7 +2420,7 @@ char *IsPseudo(char *p)
    else if (!Strncasecmp(p,"BYTE",4))    p = ParseByteData(p+4,ASCII);
    else if (!Strncasecmp(p,"BYT",3))     p = ParseByteData(p+3,ASCII);
    else if (!Strncasecmp(p,"PET",3))     p = ParseByteData(p+3,PETSCII);
-   else if (!Strncasecmp(p,".SCREEN",7)) p = ParseByteData(p+7,SCREENCODE);
+   else if (!Strncasecmp(p,"SCREEN",6))  p = ParseByteData(p+6,SCREENCODE);
    else if (!Strncasecmp(p,"BITS",4))    p = ParseBitData(p+4);
    else if (!Strncasecmp(p,"LITS",4))    p = ParseLitData(p+4);
    else if (!Strncasecmp(p,"QUAD",4))    p = ParseLongData(p+4,4);

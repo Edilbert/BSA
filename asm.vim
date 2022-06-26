@@ -14,6 +14,10 @@ endif
 syn case ignore
 
 " Opcodes
+syn match a65Opcode	"\<PHW\($\|\s\)"
+syn match a65Opcode	"\<TZA\($\|\s\)"
+syn match a65Opcode	"\<TAB\($\|\s\)"
+syn match a65Opcode	"\<TBA\($\|\s\)"
 syn match a65Opcode	"\<PHP\($\|\s\)"
 syn match a65Opcode	"\<PLA\($\|\s\)"
 syn match a65Opcode	"\<PLX\($\|\s\)"
@@ -33,28 +37,34 @@ syn match a65Opcode	"\<INZ\($\|\s\)"
 syn match a65Opcode	"\<DEC\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<DEW\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<INW\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<ROW\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<CMP\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<CMPQ\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<CPX\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<CPZ\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<BIT\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<ROL\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<ROLQ\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<ROR\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<RORQ\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<ASL\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<ASW\($\|\s\)" nextgroup=a65Address
-syn match a65Opcode	"\<ROW\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<ASLQ\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<TAZ\($\|\s\)"
-syn match a65Opcode	"\<TZA\($\|\s\)"
 syn match a65Opcode	"\<MAP\($\|\s\)"
 syn match a65Opcode	"\<EOM\($\|\s\)"
 syn match a65Opcode	"\<TXA\($\|\s\)"
 syn match a65Opcode	"\<TYA\($\|\s\)"
 syn match a65Opcode	"\<TSX\($\|\s\)"
+syn match a65Opcode	"\<TSY\($\|\s\)"
 syn match a65Opcode	"\<TXS\($\|\s\)"
 syn match a65Opcode	"\<LDA\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<LDQ\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<LDX\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<LDY\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<LDZ\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<STA\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<STQ\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<PLP\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<BRK\($\|\s\)"
 syn match a65Opcode	"\<RTI\($\|\s\)"
@@ -72,11 +82,16 @@ syn match a65Opcode	"\<BNE\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<BEQ\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<BMI\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<LSR\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<LSRQ\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<INX\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<INY\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<INC\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<INQ\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<NEG\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<ADC\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<ADCQ\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<SBC\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<SBCQ\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<AND\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<ORA\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<STX\($\|\s\)" nextgroup=a65Address
@@ -89,6 +104,7 @@ syn match a65Opcode	"\<CLC\($\|\s\)"
 syn match a65Opcode	"\<PHY\($\|\s\)"
 syn match a65Opcode	"\<PHZ\($\|\s\)"
 syn match a65Opcode	"\<TRB\($\|\s\)" nextgroup=a65Address
+syn match a65Opcode	"\<TSB\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<BBR.\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<BBS.\($\|\s\)" nextgroup=a65Address
 syn match a65Opcode	"\<RMB.\($\|\s\)" nextgroup=a65Address
@@ -113,6 +129,7 @@ syn match a65Address	"(.*),Y"
 syn match a65Address	"(.*),Z"
 syn match a65Address	"\[.*\],Z"
 syn match a65Address	",X"
+syn match a65Address	",Y"
 
 " Numbers
 syn match a65Number	"'.'"
