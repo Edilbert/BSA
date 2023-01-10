@@ -4,7 +4,7 @@
 Bit Shift Assembler
 *******************
 
-Version: 26-Jun-2022
+Version: 10-Jan-2023
 
 The assembler was developed and tested on a MAC with OS Catalina.
 Using no specific options of the host system, it should run on any
@@ -1871,7 +1871,7 @@ char *EvalOperand(char *p, int *v, int prio)
 
    p = SkipSpace(p);
 
-   while (*p && strchr("*/+-<>!&^|",*p))
+   while (*p && strchr("=*/+-<>!&^|",*p))
    {
       // loop through all binary operators
 
@@ -1899,7 +1899,7 @@ char *EvalOperand(char *p, int *v, int prio)
 // ParseWordData
 // *************
 
-char *ParseWordData(char *p)
+char *ParseWordData(char *p, int bigendian)
 {
    int i,j,l,v;
    unsigned char ByteBuffer[ML];
@@ -1915,9 +1915,18 @@ char *ParseWordData(char *p)
          ErrorLine(p);
          exit(1);
       }
-      ByteBuffer[l++] = v & 0xff;
-      ByteBuffer[l++] = v >> 8;
+      if (bigendian)
+      {
+         ByteBuffer[l++] = v >> 8;
+         ByteBuffer[l++] = v & 0xff;
+      }
+      else
+      {
+         ByteBuffer[l++] = v & 0xff;
+         ByteBuffer[l++] = v >> 8;
+      }
       p = SkipToComma(p);
+
       if (*p == ',') ++p;
    }
    if (l < 1)
@@ -1949,6 +1958,7 @@ char *ParseWordData(char *p)
 }
 
 
+
 // *************
 // ParseHex4Data
 // *************
@@ -1973,7 +1983,6 @@ char *ParseHex4Data(char *p)
    pc += 4;
    return p;
 }
-
 
 // *************
 // ParseDec4Data
@@ -2413,14 +2422,15 @@ char *ParseByteData(char *p, int Charset)
 
 char *IsPseudo(char *p)
 {
-        if (!Strncasecmp(p,"WORD",4))    p = ParseWordData(p+4);
+        if (!Strncasecmp(p,"WORD",4))    p = ParseWordData(p+4,0);
+   else if (!Strncasecmp(p,"BIGW",4))    p = ParseWordData(p+4,1);
    else if (!Strncasecmp(p,"HEX4",4))    p = ParseHex4Data(p+4);
    else if (!Strncasecmp(p,"DEC4",4))    p = ParseDec4Data(p+4);
-   else if (!Strncasecmp(p,"WOR",3))     p = ParseWordData(p+3);
+   else if (!Strncasecmp(p,"WOR",3))     p = ParseWordData(p+3,0);
    else if (!Strncasecmp(p,"BYTE",4))    p = ParseByteData(p+4,ASCII);
    else if (!Strncasecmp(p,"BYT",3))     p = ParseByteData(p+3,ASCII);
    else if (!Strncasecmp(p,"PET",3))     p = ParseByteData(p+3,PETSCII);
-   else if (!Strncasecmp(p,"SCREEN",6))  p = ParseByteData(p+6,SCREENCODE);
+   else if (!Strncasecmp(p,"DISP",4))    p = ParseByteData(p+4,SCREENCODE);
    else if (!Strncasecmp(p,"BITS",4))    p = ParseBitData(p+4);
    else if (!Strncasecmp(p,"LITS",4))    p = ParseLitData(p+4);
    else if (!Strncasecmp(p,"QUAD",4))    p = ParseLongData(p+4,4);
@@ -2880,6 +2890,7 @@ int CheckCondition(char *p)
       {
          p = EvalOperand(p+3,&v,0);
          SkipLine[IfLevel] = v == UNDEF || v == 0;
+         if (df) fprintf(df,"#if (%d)\n",v);
       }
       CheckSkip();
       if (Pass == MaxPass)
@@ -3922,7 +3933,7 @@ int main(int argc, char *argv[])
 
    printf("\n");
    printf("*******************************************\n");
-   printf("* Bit Shifter's Assembler 31-Mar-2022     *\n");
+   printf("* Bit Shifter's Assembler 10-Jan-2023     *\n");
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
