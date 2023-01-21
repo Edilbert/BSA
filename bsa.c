@@ -2337,6 +2337,14 @@ char *ParseByteData(char *p, int Charset)
          l  = 1;
          p += 6;
       }
+      else if (Delimiter == '#' && p[1] == '"' && p[5] == '"') // Hashed ASCII
+      {
+         v = p[4]-64 + 27 * (p[3]-64 + 27 * (p[2]-64));
+         ByteBuffer[0] = v & 0xff;
+         ByteBuffer[1] = v >> 8;
+         l  = 2;
+         p += 6;
+      }
       else if (Delimiter == '"' || Delimiter == '\'')
       {
          i = l; // remember start of string
