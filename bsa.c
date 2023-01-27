@@ -1642,7 +1642,18 @@ char *EvalCharValue(char *p, int *v)
       *v = ' ';
       return p + strlen(p);
    }
-   *v = *p++;
+   if (*p == '\\')
+   {
+      ++p;
+           if (*p == 'r') *v = 13;
+      else if (*p == 'n') *v = 10;
+      else if (*p == 'a') *v =  7;
+      else if (*p == 'e') *v = 27;
+      else if (*p == '0') *v =  0;
+      else                *v = *p;
+      ++p;
+   }
+   else *v = *p++;
    if (*p != '\'' && *p != 0)
    {
       ++ErrNum;
