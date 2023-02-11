@@ -4,7 +4,7 @@
 Bit Shift Assembler
 *******************
 
-Version: 10-Jan-2023
+Version: 11-Feb-2023
 
 The assembler was developed and tested on a MAC with OS Catalina.
 Using no specific options of the host system, it should run on any
@@ -54,7 +54,9 @@ Examples of pseudo opcodes (directives):
 .LOAD $0401                    precede binary with a CBM load address
 .STORE BASIC_ROM,$2000,"basic.rom" write binary image file "basic.rom"
 .BYTE $20,"Example",0          stores a series of byte data
+.BHEX 20,1f,33,af              stores a series of hex data
 .WORD LAB_10, WriteTape,$0200  stores a series of word data
+.BIGW LAB_10, WriteTape,$0200  stores a series of word data in big endian order
 .QUAD 100000                   stores a 32 bit integer in CBM format
 .REAL  3.1415926               stores a 40 bit real in CBM format
 .REAL4 3.1415926               stores a 32 bit real in CBM format
@@ -634,6 +636,7 @@ int Skipping;
 int SkipLine[10];
 int ForcedEnd;    // Triggered by .END command
 int IgnoreCase;   // 1: Ignore case for symbols
+int ForcedHex;    // set by pseudo .BHEX
 
 #define ASCII      0
 #define PETSCII    1
@@ -1863,8 +1866,9 @@ char *EvalOperand(char *p, int *v, int prio)
           break;
       }
    }
-   else if (isdigit(c) && !isnnd(p)) p = EvalDecValue(p,v);
-   else if (isym(p)    ||  isnnd(p)) p = EvalSymValue(p,v);
+   else if (ForcedHex && isxdigit(*p)) p = EvalHexValue(p,v);
+   else if (isdigit(c) && !isnnd(p))   p = EvalDecValue(p,v);
+   else if (isym(p)    ||  isnnd(p))   p = EvalSymValue(p,v);
    else
    {
       ErrorLine(p);
@@ -2204,6 +2208,9 @@ char *ParseBSSData(char *p)
    return p;
 }
 
+// *************
+// ParseBaseData
+// *************
 
 char *ParseBaseData(char *p)
 {
@@ -2319,6 +2326,10 @@ char *ParseASCII(char *p, unsigned char b[], int *l)
    return p;
 }
 
+// *************
+// ParseByteData
+// *************
+
 char *ParseByteData(char *p, int Charset)
 {
    int i,j,l,v;
@@ -2356,7 +2367,7 @@ char *ParseByteData(char *p, int Charset)
          l  = 2;
          p += 6;
       }
-      else if (Delimiter == '"' || Delimiter == '\'')
+      else if (Delimiter == '"' || Delimiter == '\'') // string or character
       {
          i = l; // remember start of string
          p = ParseASCII(p,ByteBuffer,&l);
@@ -2381,7 +2392,7 @@ char *ParseByteData(char *p, int Charset)
             fprintf(df,">\n");
          }
       }
-      else
+      else // numeric data
       {
          p = EvalOperand(p,&v,0);
          if (v == UNDEF && Pass == MaxPass)
@@ -2432,6 +2443,7 @@ char *ParseByteData(char *p, int Charset)
       fprintf(lf,"\n");
    }
    pc += l;
+   ForcedHex = 0;
    return p;
 }
 
@@ -2450,6 +2462,7 @@ char *IsPseudo(char *p)
    else if (!Strncasecmp(p,"BYT",3))     p = ParseByteData(p+3,ASCII);
    else if (!Strncasecmp(p,"PET",3))     p = ParseByteData(p+3,PETSCII);
    else if (!Strncasecmp(p,"DISP",4))    p = ParseByteData(p+4,SCREENCODE);
+   else if (!Strncasecmp(p,"BHEX",4))   {ForcedHex=1;p=ParseByteData(p+4,ASCII);}
    else if (!Strncasecmp(p,"BITS",4))    p = ParseBitData(p+4);
    else if (!Strncasecmp(p,"LITS",4))    p = ParseLitData(p+4);
    else if (!Strncasecmp(p,"QUAD",4))    p = ParseLongData(p+4,4);
@@ -3952,7 +3965,7 @@ int main(int argc, char *argv[])
 
    printf("\n");
    printf("*******************************************\n");
-   printf("* Bit Shifter's Assembler 10-Jan-2023     *\n");
+   printf("* Bit Shifter's Assembler 11-Feb-2023     *\n");
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
