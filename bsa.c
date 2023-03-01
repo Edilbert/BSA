@@ -644,10 +644,10 @@ int ForcedHex;    // set by pseudo .BHEX
 
 // Filenames
 
-char  Src[256];
-char  Lst[256];
-char  Pre[256];
-char  Ext[5];
+char  Src[256] = "";
+char  Lst[256] = "";
+char  Pre[256] = "";
+char  Ext[5]   = "";
 
 int GenStart = 0x10000 ; // Lowest assemble address
 int GenEnd   =       0 ; //Highest assemble address
@@ -3428,27 +3428,24 @@ void RecordMacro(char *p)
          }
          Macros++;
       }
-      else     // skip macro body
+      else    // skip macro body, printing to lf on last pass
       {
-         while (!feof(sf) && !Strcasestr(Line,"ENDMAC"))
-         {
-            ++LiNo;
-            fgets(Line,sizeof(Line),sf);
-         }
-      }
-      if (Pass == MaxPass) // List macro
-      {
+         if (Pass == MaxPass) {
          PrintLiNo(1);
          ++LiNo;
          fprintf(lf,"            %s\n",Line);
-         do
+         }
+         while (!feof(sf) && !Strcasestr(Line,"ENDMAC"))
          {
+         ++LiNo;
             fgets(Line,sizeof(Line),sf);
+            if (Pass == MaxPass) {
             PrintLiNo(1);
             ++LiNo;
             fprintf(lf,"            %s",Line);
             if (pf) fprintf(pf,"%s",Line);
-         } while (!feof(sf) && !Strcasestr(Line,"ENDMAC"));
+            }
+         }
          LiNo-=2;
       }
       if (df) fprintf(df,"Macro [%s] = %s\n",Mac[j].Name,Mac[j].Body);
@@ -3899,6 +3896,22 @@ const char *Stat(int o)
    else   return StatOff;
 }
 
+void usage(int missing)
+{
+   if (missing)
+      printf("*** missing filename for assembler source file ***\n");
+   printf("\nUsage: bsa [OPTION]... <source>\n\n"
+          "If the <source> name ends in \".src\", the MEGA65 ROM compatibility mode is enabled!\n\n"
+          "   -b       enable branch optimisation\n"
+          "   -d       print details to file\n"
+          "   -D<DEF>  define a label, overriding labels defined in source\n"
+          "   -i       ignore case in symbols\n"
+          "   -n       include line numbers in listing\n"
+          "   -p       print preprocessed source\n"
+          "   -x       assemble listing file - skip hex in front\n\n");
+   exit(1);
+}
+
 int main(int argc, char *argv[])
 {
    int ic,v,l;
@@ -3917,23 +3930,10 @@ int main(int argc, char *argv[])
          if (!Src[0]) strncpy(Src,argv[ic],sizeof(Src)-1);
       }
       else
-      {
-         printf("\nUsage: bsa [-d -D -i -x] <source> <list>\n");
-         exit(1);
-      }
+         usage(0);
    }
    if (!Src[0])
-   {
-      printf("*** missing filename for assembler source file ***\n");
-      printf("\nUsage: bsa [-d -D -i -n -x] <source> [<list>]\n");
-      printf("   -d print details in file <Debug.lst>\n");
-      printf("   -D Define symbols\n");
-      printf("   -i ignore case in symbols\n");
-      printf("   -n include line numbers in listing\n");
-      printf("   -p print preprocessed source\n");
-      printf("   -x assemble listing file - skip hex in front\n");
-      exit(1);
-   }
+      usage(1);
 
    // split filename
 
@@ -3969,8 +3969,16 @@ int main(int argc, char *argv[])
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
-   printf("* -d:%s     -i:%s     -n:%s     -x:%s *\n",
-         Stat(Debug),Stat(IgnoreCase),Stat(WithLiNo),Stat(SkipHex));
+   if (Preprocess)
+      printf("* Prepro: %-31.31s *\n",Pre);
+   if (Debug)
+      printf("* Debug : Debug.lst                       *\n");
+   if (!strcmp(Ext,".src"))
+      printf("* --------------------------------------- *\n"
+             "* !!!  MEGA65 ROM compatibility mode  !!! *\n"
+             "* --------------------------------------- *\n");
+   printf("* -b:%s     -i:%s     -n:%s     -x:%s *\n",
+         Stat(BranchOpt),Stat(IgnoreCase),Stat(WithLiNo),Stat(SkipHex));
    printf("*******************************************\n");
 
    sf = fopen(Src,"r");
