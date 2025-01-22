@@ -4,7 +4,7 @@
 Bit Shift Assembler
 *******************
 
-Version: 11-Feb-2023
+Version: 22-Jan-2025
 
 The assembler was developed and tested on a MAC with OS Catalina.
 Using no specific options of the host system, it should run on any
@@ -2107,7 +2107,7 @@ char *IncludeFile(char *p)
    }
    IncludeStack[IncludeLevel].LiNo = LiNo;
    IncludeStack[++IncludeLevel].fp = sf;
-   IncludeStack[IncludeLevel].Src = MallocOrDie(strlen(FileName + 1));
+   IncludeStack[IncludeLevel].Src = MallocOrDie(strlen(FileName) + 1);
    strcpy(IncludeStack[IncludeLevel].Src, FileName);
    PrintLine();
    LiNo = 0;
@@ -3965,7 +3965,7 @@ int main(int argc, char *argv[])
 
    printf("\n");
    printf("*******************************************\n");
-   printf("* Bit Shifter's Assembler 11-Feb-2023     *\n");
+   printf("* Bit Shifter's Assembler 22-Jan-2025     *\n");
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
