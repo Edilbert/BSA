@@ -4,7 +4,7 @@
 Bit Shift Assembler
 *******************
 
-Version: 22-Jan-2025
+Version: 03-Mar-2025
 
 The assembler was developed and tested on a MAC with OS Catalina.
 Using no specific options of the host system, it should run on any
@@ -609,6 +609,7 @@ int InsideMacro;    // Macro nesting level
 int CurrentMacro;   // Macro index
 int ModuleStart;    // Address of a module
 int WordOC;         // List 2 byte opcodes as word
+int ForcedWord;     // Force current address mode to 16 bit
 
 unsigned char ROM_Fill;
 
@@ -1744,6 +1745,13 @@ char *op_hig(char *p, int *v)
    return p;
 }
 
+char *op_frc(char *p, int *v)
+{
+   p = EvalOperand(p+1,v,12);
+   ForcedWord = 1;
+   return p;
+}
+
 char *op_prc(char *p, int *v) { *v = pc; return p+1;}
 char *op_hex(char *p, int *v) { return EvalHexValue(p+1,v) ;}
 char *op_oct(char *p, int *v) { return EvalOctValue(p+1,v) ;}
@@ -1757,7 +1765,7 @@ struct unaop_struct
    char *(*foo)(char*,int*);
 };
 
-#define UNAOPS 14
+#define UNAOPS 15
 
 // table of unary operators in C style
 
@@ -1776,10 +1784,11 @@ struct unaop_struct unaop[UNAOPS] =
    { 39,&op_cha}, // char constant
    {'%',&op_bin}, // binary constant
    {'?',&op_len}, // length of .BYTE data line
+   {'^',&op_frc}, // force word address
    {'@',&op_oct}  // octal constant
 };
 
-char unastring[UNAOPS+1] = "[(+-!~<>*$'%?";
+char unastring[UNAOPS+1] = "[(+-!~<>*$'%?^";
 
 int unaops = UNAOPS-1;
 
@@ -2665,7 +2674,7 @@ char * SplitOperand(char *p)
    il      =    3; // default instruction length
    inquo   =    0; // inside quotes
    inapo   =    0; // inside apostrophes
-   if (am != AM_Dpag) am = AM_Abso; // default address mode
+   if (ForcedWord || am != AM_Dpag) am = AM_Abso; // default address mode
 
    // Extract operand
 
@@ -3176,7 +3185,7 @@ char *GenerateCode(char *p)
             exit(1);
          }
       }
-      else if (w >= 0 && w < 256 && GenIndex >= 0 && o16 == 0)
+      else if (!ForcedWord && w >= 0 && w < 256 && GenIndex >= 0 && o16 == 0)
       {
          if (am == AM_Abso && Gen[GenIndex].Opc[AM_Dpag] >= 0)
          {
@@ -3305,6 +3314,7 @@ char *GenerateCode(char *p)
       }
    }
    else pc += il;
+   ForcedWord = 0;
    return p;
 }
 
@@ -3954,7 +3964,7 @@ int main(int argc, char *argv[])
       IgnoreCase = 1;
       ROM_Fill   = 0xff;
       unaops++;      // allow octal constants
-      strcpy(unastring,"[(+-!~<>*$'%?@");
+      strcpy(unastring,"[(+-!~<>*$'%?^@");
    }
 
    strcpy(Pre,Src);
@@ -3965,7 +3975,7 @@ int main(int argc, char *argv[])
 
    printf("\n");
    printf("*******************************************\n");
-   printf("* Bit Shifter's Assembler 22-Jan-2025     *\n");
+   printf("* Bit Shifter's Assembler 03-Mar-2025     *\n");
    printf("* --------------------------------------- *\n");
    printf("* Source: %-31.31s *\n",Src);
    printf("* List  : %-31.31s *\n",Lst);
