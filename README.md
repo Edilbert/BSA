@@ -13,7 +13,7 @@ A full documentation will be added later.
 
 A cross-assembler for hosts running MAC OSX, Linux or Windows
 
-The executable file "bsa_m1.x" in this repository is compiled for MACs with M1 CPU.
+The executable file "bsa_m2.x" in this repository is compiled for MACs with M2 CPU.
 
 Windows and Linux users have to download the source code "bsa.c"
 and compile it with a standard C compiler. gcc for Linux
